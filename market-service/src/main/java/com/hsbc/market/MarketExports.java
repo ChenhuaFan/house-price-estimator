@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
 
@@ -32,6 +33,13 @@ public final class MarketExports {
     private static final String[] HEADERS = {
         "id", "square_footage", "bedrooms", "bathrooms", "year_built", "lot_size",
         "distance_to_city_center", "school_rating", "price"
+    };
+    private static final String[] PDF_HEADERS = {
+        "ID", "Square footage", "Bedrooms", "Bathrooms", "Year built", "Lot size",
+        "Distance to city center", "School rating", "Actual price"
+    };
+    private static final float[] PDF_COLUMN_WIDTHS = {
+        0.50f, 1.10f, 0.75f, 0.82f, 0.82f, 0.92f, 1.30f, 0.92f, 1.18f
     };
 
     private MarketExports() {}
@@ -93,32 +101,16 @@ public final class MarketExports {
 
             if (whatIf != null) {
                 document.add(new Paragraph("What-if analysis", heading));
-                document.add(new Paragraph("Inputs: " + whatIf.inputs()));
+                addWhatIfInputs(document, whatIf.inputs());
                 document.add(new Paragraph("Predicted price: USD "
                         + whatIf.prediction().predictedPrice() + " (model "
                         + whatIf.prediction().modelVersion() + ")"));
-                if (!whatIf.prediction().warnings().isEmpty()) {
-                    document.add(new Paragraph("Warnings: " + whatIf.prediction().warnings()));
+                for (Warning warning : whatIf.prediction().warnings()) {
+                    document.add(new Paragraph(warningSummary(warning)));
                 }
             }
 
-            document.add(new Paragraph("Properties", heading));
-            PdfPTable table = new PdfPTable(HEADERS.length);
-            table.setWidthPercentage(100);
-            table.setHeaderRows(1);
-            addHeader(table, HEADERS);
-            for (PropertyRecord record : analysis.records()) {
-                table.addCell(Long.toString(record.id()));
-                table.addCell(Long.toString(record.squareFootage()));
-                table.addCell(Integer.toString(record.bedrooms()));
-                table.addCell(record.bathrooms().toPlainString());
-                table.addCell(Integer.toString(record.yearBuilt()));
-                table.addCell(Long.toString(record.lotSize()));
-                table.addCell(record.distanceToCityCenter().toPlainString());
-                table.addCell(record.schoolRating().toPlainString());
-                table.addCell(money(record.price()));
-            }
-            document.add(table);
+            addPropertyPages(document, analysis.records(), heading);
             document.close();
             return output.toByteArray();
         } catch (Exception error) {
@@ -127,7 +119,130 @@ public final class MarketExports {
     }
 
     private static String filterSummary(MarketQuery query) {
-        return query.cacheKey();
+        List<String> filters = new ArrayList<>();
+        addRange(filters, "Price", query.priceMin(), query.priceMax(), true);
+        addRange(filters, "Square footage", query.squareFootageMin(), query.squareFootageMax(), false);
+        addRange(filters, "Bedrooms", query.bedroomsMin(), query.bedroomsMax(), false);
+        addRange(filters, "Bathrooms", query.bathroomsMin(), query.bathroomsMax(), false);
+        addRange(filters, "Year built", query.yearBuiltMin(), query.yearBuiltMax(), false);
+        addRange(filters, "Lot size", query.lotSizeMin(), query.lotSizeMax(), false);
+        addRange(filters, "Distance", query.distanceMin(), query.distanceMax(), false);
+        addRange(filters, "School rating", query.schoolRatingMin(), query.schoolRatingMax(), false);
+        if (filters.isEmpty()) {
+            filters.add("None (all records)");
+        }
+        filters.add("Sort: " + displaySort(query.normalizedSort()) + " ("
+                + ("desc".equals(query.normalizedDirection()) ? "descending" : "ascending") + ")");
+        return String.join("; ", filters);
+    }
+
+    private static void addRange(
+            List<String> filters, String label, Object minimum, Object maximum, boolean monetary) {
+        if (minimum == null && maximum == null) {
+            return;
+        }
+        String lower = displayValue(minimum, monetary);
+        String upper = displayValue(maximum, monetary);
+        if (minimum != null && maximum != null) {
+            filters.add(label + ": " + lower + " to " + upper);
+        } else if (minimum != null) {
+            filters.add(label + ": at least " + lower);
+        } else {
+            filters.add(label + ": at most " + upper);
+        }
+    }
+
+    private static String displayValue(Object value, boolean monetary) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof BigDecimal decimal) {
+            return monetary ? money(decimal) : decimal.stripTrailingZeros().toPlainString();
+        }
+        return value.toString();
+    }
+
+    private static String displaySort(String sort) {
+        return switch (sort) {
+            case "source_id" -> "ID";
+            case "square_footage" -> "square footage";
+            case "year_built" -> "year built";
+            case "lot_size" -> "lot size";
+            case "distance_to_city_center" -> "distance to city center";
+            case "school_rating" -> "school rating";
+            default -> sort;
+        };
+    }
+
+    private static void addWhatIfInputs(Document document, PropertyInput input) throws Exception {
+        PdfPTable table = new PdfPTable(4);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[] {1.15f, 0.85f, 1.15f, 0.85f});
+        addLabelValue(table, "Square footage", input.squareFootage() + " sq. ft.");
+        addLabelValue(table, "Bedrooms", input.bedrooms().toString());
+        addLabelValue(table, "Bathrooms", input.bathrooms().toPlainString());
+        addLabelValue(table, "Year built", input.yearBuilt().toString());
+        addLabelValue(table, "Lot size", input.lotSize() + " sq. ft.");
+        addLabelValue(table, "Distance", input.distanceToCityCenter().toPlainString() + " miles");
+        addLabelValue(table, "School rating", input.schoolRating().toPlainString());
+        addLabelValue(table, "Currency", "USD");
+        document.add(table);
+    }
+
+    private static void addLabelValue(PdfPTable table, String label, String value) {
+        Font labelFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8);
+        Font valueFont = FontFactory.getFont(FontFactory.HELVETICA, 8);
+        table.addCell(pdfCell(label, labelFont, false));
+        table.addCell(pdfCell(value, valueFont, false));
+    }
+
+    private static String warningSummary(Warning warning) {
+        String range = warning.advisoryMin() == null && warning.advisoryMax() == null
+                ? "documented advisory range"
+                : String.valueOf(warning.advisoryMin()) + " to " + warning.advisoryMax();
+        return "Advisory warning - " + warning.field() + " = " + warning.submittedValue()
+                + " (advisory range " + range + "): " + warning.reason();
+    }
+
+    private static void addPropertyPages(Document document, List<PropertyRecord> records, Font heading)
+            throws Exception {
+        document.newPage();
+        document.add(new Paragraph("Properties", heading));
+        if (records.isEmpty()) {
+            document.add(new Paragraph("No properties match the active filters."));
+            return;
+        }
+        document.add(propertyTable(records));
+    }
+
+    private static PdfPTable propertyTable(List<PropertyRecord> records) throws Exception {
+        PdfPTable table = new PdfPTable(PDF_HEADERS.length);
+        table.setWidthPercentage(100);
+        table.setWidths(PDF_COLUMN_WIDTHS);
+        table.setHeaderRows(1);
+        table.setSplitLate(false);
+        table.setSplitRows(false);
+        addHeader(table, PDF_HEADERS);
+        Font body = FontFactory.getFont(FontFactory.HELVETICA, 7.5f);
+        for (PropertyRecord record : records) {
+            addBodyRow(table, body,
+                    Long.toString(record.id()),
+                    Long.toString(record.squareFootage()),
+                    Integer.toString(record.bedrooms()),
+                    record.bathrooms().toPlainString(),
+                    Integer.toString(record.yearBuilt()),
+                    Long.toString(record.lotSize()),
+                    record.distanceToCityCenter().toPlainString(),
+                    record.schoolRating().toPlainString(),
+                    money(record.price()));
+        }
+        return table;
+    }
+
+    private static void addBodyRow(PdfPTable table, Font font, String... values) {
+        for (String value : values) {
+            table.addCell(pdfCell(value, font, true));
+        }
     }
 
     private static String money(BigDecimal value) {
@@ -136,11 +251,19 @@ public final class MarketExports {
 
     private static void addHeader(PdfPTable table, String... values) {
         for (String value : values) {
-            PdfPCell cell = new PdfPCell(new Phrase(value, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8)));
+            PdfPCell cell = pdfCell(value, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7.5f), false);
             cell.setHorizontalAlignment(Element.ALIGN_CENTER);
             cell.setBackgroundColor(new Color(226, 232, 240));
             table.addCell(cell);
         }
+    }
+
+    private static PdfPCell pdfCell(String value, Font font, boolean noWrap) {
+        PdfPCell cell = new PdfPCell(new Phrase(value, font));
+        cell.setPadding(3);
+        cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        cell.setNoWrap(noWrap);
+        return cell;
     }
 
     private static byte[] chartImage(List<ChartPoint> points) throws Exception {

@@ -64,7 +64,14 @@ class MarketExportsTest {
         PdfTextExtractor extractor = new PdfTextExtractor(reader);
         StringBuilder text = new StringBuilder();
         for (int page = 1; page <= reader.getNumberOfPages(); page++) {
-            text.append(extractor.getTextFromPage(page));
+            String pageText = extractor.getTextFromPage(page);
+            text.append(pageText);
+            if (page > 1) {
+                assertThat(pageText)
+                        .contains("Square footage")
+                        .contains("Distance to city center")
+                        .contains("Actual price");
+            }
         }
         Rectangle pageSize = reader.getPageSizeWithRotation(1);
 
@@ -74,12 +81,19 @@ class MarketExportsTest {
         assertThat(text.toString())
                 .contains("Property Market Analysis")
                 .contains("Matching records: 120")
+                .contains("Properties")
                 .contains("What-if analysis")
+                .contains("Square footage")
+                .contains("Distance")
                 .contains("250000.56")
                 .contains("housing-linear-test")
                 .contains("outside advisory range")
+                .contains("Advisory warning - school_rating = 11")
                 .contains("Page 1")
-                .contains("Page 2");
+                .contains("Page 2")
+                .doesNotContain("PropertyInput[")
+                .doesNotContain("Warning[")
+                .doesNotContain("||||");
         reader.close();
     }
 
