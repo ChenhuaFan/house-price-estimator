@@ -95,7 +95,9 @@ Hard validation is limited to presence, type, finiteness, discrete-value rules, 
 | `web-portal` | Next.js | Unified UI, shared navigation, server rendering, browser-facing backend-for-frontend routes | No authoritative business data |
 | `model-service` | Python, FastAPI, Scikit-learn | PDF-required prediction, model-info, and health capabilities exposed through project-defined routes, plus operational liveness/readiness endpoints; resolves and serves the active trained model | Read-only model registry access and versioned model artifacts |
 | `estimator-service` | Python, FastAPI | Validates estimator requests, calls the model service, and manages estimate history and comparisons | Estimate-history tables in PostgreSQL |
-| `market-service` | Java 21, Spring Boot 3.4.4 | Dataset queries, filters, sorting, aggregate statistics, what-if orchestration, caching, and CSV/PDF generation from one analysis result | Read-only central catalog access, bounded in-process cache, and temporary export files |
+| `market-service` | Java 21, Spring Boot 3.4.4 | Dataset queries, filters, sorting, aggregate statistics, what-if orchestration, caching, and CSV/PDF generation from one analysis result | Read-only central catalog access, durable export-job metadata, bounded in-process cache, and bounded export files |
+
+- The Java backend must remain one deployable Maven application organized as `Controller -> Service -> DAO (@Repository) -> MyBatis Mapper (@Mapper) -> mapper XML -> PostgreSQL`. Controllers must not access DAOs or Mappers directly, Services must not execute SQL, and Mapper SQL must live under `src/main/resources/mapper/`.
 
 - PostgreSQL is an infrastructure dependency rather than an application microservice. Its authoritative business persistence design is defined in [`data-schema.md`](data-schema.md).
 - A new microservice must not be introduced unless it has a distinct business capability and at least one independent reason to deploy separately, such as scaling, security isolation, failure isolation, or lifecycle ownership.

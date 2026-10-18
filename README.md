@@ -13,9 +13,21 @@ The local deployment is designed for a live interview demonstration. Docker Comp
 
 The Property Value Estimator validates all seven model inputs, returns the predicted USD price as a table and chart, stores browser-scoped history, and compares selected estimates side by side.
 
-The Property Market Analysis application shows the supplied 50-row housing dataset, summary statistics, charts, filters, sorting, pagination, model-backed what-if estimates, and CSV/PDF exports. The active filters and sort order define the data used everywhere on the page and in both exports.
+The Property Market Analysis application shows the supplied housing dataset, contract-driven summary statistics, charts, explicit segment filters, single-field sorting, opaque-cursor pagination, model-backed what-if estimates, and durable asynchronous CSV/PDF exports. Properties, statistics, charts, what-if context, and exports are pinned to one immutable dataset version.
 
 Task 1 exposes single and batch prediction, model metadata and evaluation metrics, health endpoints, OpenAPI 3.1, and Swagger UI.
+
+## Frontend preview
+
+The two screens share the same responsive navigation, semantic design tokens, error patterns, and reduced-motion policy. Initial history and market reads are rendered by React Server Components; later user actions update only their relevant region and preserve the existing dashboard while URL-backed filter, sort, and cursor transitions complete.
+
+### Property Value Estimator
+
+![Property Value Estimator showing the seven-field form, exact prediction chart and result table](docs/screenshots/property-estimator.png)
+
+### Property Market Analysis
+
+![Property Market Analysis showing dataset identity, metric cards, charts, cursor-backed table and sticky what-if panel](docs/screenshots/market-dashboard.png)
 
 ## Architecture
 
@@ -41,7 +53,7 @@ The service boundaries follow business ownership:
 | `web-portal` | Shared App Router layout, Server Component initial loading, browser interaction, and thin BFF routes |
 | `model-service` | Canonical input validation, inference, output rounding, model metadata, and Task 1 Swagger API |
 | `estimator-service` | Estimate orchestration, idempotency, anonymous history, deletion, and model integration |
-| `market-service` | Dataset queries, aggregate statistics, charts, caching, what-if orchestration, and CSV/PDF generation |
+| `market-service` | Version-pinned property queries, bounded statistics, signed cursors, what-if orchestration, and durable asynchronous CSV/PDF jobs |
 | `training` | Immutable snapshot export, deterministic split, evaluation, model registration, and activation |
 | PostgreSQL | Versioned housing catalog, model registry, and durable estimate history |
 
@@ -150,7 +162,7 @@ The following sequence covers the PDF deliverables without relying on internal p
 1. Open Task 1 Swagger UI. Run `GET /health`, `GET /api/v1/model-info`, and `POST /api/v1/predict` with one record and then a batch.
 2. Use [`requirements/Test Data For Prediction.csv`](requirements/Test%20Data%20For%20Prediction.csv) as the batch demonstration input. This file is never used for training or market actual-price data.
 3. Open the estimator, submit a property, inspect the result table and chart, reload the page to show durable history, select two estimates for comparison, and use the View/Delete/Clear actions.
-4. Open the market dashboard, filter and sort a segment, reload or share the query-string URL, run a what-if estimate, and download CSV and PDF exports.
+4. Open the market dashboard, apply and reset a segment filter, sort one column, browse with Next/Back cursors, reload or share the query-string URL, run a what-if estimate, and follow a CSV or PDF job from Queued to Download.
 5. Return to the unfiltered market view and confirm that all 50 source rows are represented.
 
 ## Data and database initialization
@@ -209,7 +221,14 @@ Run the complete release gate, including Compose validation, every image build, 
 make verify
 ```
 
-The latest recorded results, runtime versions, clean-start lineage, browser matrix, and PDF inspection are in the [`release acceptance report`](docs/test-report.md).
+The frontend can also be verified independently while backend work is in progress. This command starts contract-faithful in-process mocks for the Estimator and Market v2 APIs, launches Next.js on an isolated port, and runs the Chromium user journeys, accessibility audit, reduced-motion check, and mobile overflow check:
+
+```sh
+cd web-portal
+corepack pnpm test:e2e:mock
+```
+
+The previous live-stack release results, runtime versions, clean-start lineage, browser matrix, and PDF inspection are retained in the [`release acceptance report`](docs/test-report.md). Run the mock-backed frontend gate above for this redesign when the backend stack is not available.
 
 The enforced minimum is 80% line coverage and 70% branch coverage for each tested service. The Portal, Python services, and Java service fail their builds when the configured thresholds are missed.
 
@@ -277,6 +296,7 @@ make smoke
 | [`docs/requirements.md`](docs/requirements.md) | Product requirements with PDF/project-decision provenance |
 | [`docs/constraints.md`](docs/constraints.md) | Technology, security, quality, accessibility, and deployment rules |
 | [`docs/architecture.md`](docs/architecture.md) | Components, flows, failure behavior, and deployment topology |
+| [`docs/frontend-design.md`](docs/frontend-design.md) | Task 2 frontend behaviour, RSC/client boundaries, data flow, Motion policy, and black-box acceptance criteria |
 | [`docs/data-schema.md`](docs/data-schema.md) | PostgreSQL schemas, model registry, numeric contracts, and lineage |
 | [`docs/e2e-test-plan.md`](docs/e2e-test-plan.md) | User and live-system acceptance cases |
 | [`docs/integration-test-plan.md`](docs/integration-test-plan.md) | Service tests and requirement traceability matrix |

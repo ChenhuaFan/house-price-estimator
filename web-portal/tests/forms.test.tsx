@@ -9,11 +9,11 @@ import { propertyInput, whatIfResponse } from "@/tests/fixtures";
 
 const navigation = vi.hoisted(() => ({ push: vi.fn() }));
 const marketApi = vi.hoisted(() => ({ runWhatIf: vi.fn() }));
+const marketOverview = { count: "2", minimumPrice: "200000.00", maximumPrice: "300000.00", averagePrice: "250000.00", averageSquareFootage: "1800", priceStandardDeviation: "50000.00" };
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: navigation.push }) }));
 vi.mock("@/features/market/api", () => ({
   runWhatIf: marketApi.runWhatIf,
-  downloadPdf: vi.fn(),
 }));
 
 async function fillProperty(user: ReturnType<typeof userEvent.setup>, prefix = ""): Promise<void> {
@@ -92,35 +92,37 @@ describe("estimator and market forms", () => {
 
   it("validates market ranges before navigation", async () => {
     const user = userEvent.setup();
-    render(<FilterForm values={{ priceMin: "300000", priceMax: "100000", size: "20" }} />);
+    render(<FilterForm values={{ price_gte: "300000", price_lte: "100000" }} onApply={vi.fn()} onReset={vi.fn()} />);
 
+    await user.click(screen.getByText(/Market filters/));
     await user.click(screen.getByRole("button", { name: "Apply filters" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("Actual price: minimum cannot exceed maximum.");
-    expect(screen.getByLabelText("Minimum", { selector: "#filter-priceMin" })).toHaveFocus();
+    expect(screen.getByLabelText("Actual price minimum", { selector: "#filter-price_gte" })).toHaveFocus();
     expect(navigation.push).not.toHaveBeenCalled();
   });
 
-  it("applies and resets market filters while clearing pending state after navigation", async () => {
+  it("emits validated market filters and reset actions for the smart container", async () => {
     const user = userEvent.setup();
+    const onApply = vi.fn();
+    const onReset = vi.fn();
     const { rerender } = render(<FilterForm values={{
-      priceMin: "100000", size: "20", sort: "price", direction: "desc",
-    }} />);
+      price_gte: "100000",
+    }} onApply={onApply} onReset={onReset} />);
+    await user.click(screen.getByText(/Market filters/));
     await user.click(screen.getByRole("button", { name: "Apply filters" }));
-    expect(navigation.push).toHaveBeenCalledWith(
-      "/market?priceMin=100000&size=20&sort=price&direction=desc&page=0",
-    );
-    expect(screen.getByRole("button", { name: "Applying…" })).toBeDisabled();
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ price_gte: "100000" }));
 
-    rerender(<FilterForm values={{ priceMin: "100000", size: "20", sort: "price", direction: "desc", page: "0" }} />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Apply filters" })).toBeEnabled());
+    rerender(<FilterForm values={{ price_gte: "100000" }} pending onApply={onApply} onReset={onReset} />);
+    expect(screen.getByRole("button", { name: "Applying…" })).toBeDisabled();
+    rerender(<FilterForm values={{ price_gte: "100000" }} onApply={onApply} onReset={onReset} />);
     await user.click(screen.getByRole("button", { name: "Reset filters" }));
-    expect(navigation.push).toHaveBeenLastCalledWith("/market");
+    expect(onReset).toHaveBeenCalledOnce();
   });
 
   it("validates what-if inputs before calling the model", async () => {
     const user = userEvent.setup();
-    render(<WhatIfForm onResult={vi.fn()} />);
+    render(<WhatIfForm marketOverview={marketOverview} onResult={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "Run what-if" }));
     expect(screen.getAllByRole("alert")).toHaveLength(7);
     expect(screen.getByLabelText(/Interior floor area/)).toHaveFocus();
@@ -133,13 +135,13 @@ describe("estimator and market forms", () => {
     advisory.prediction.warnings = [{
       field: "school_rating",
       submitted_value: "11",
-      advisory_min: "1",
-      advisory_max: "10",
-      reason: "Outside advisory range.",
+      advisory_minimum: "1",
+      advisory_maximum: "10",
+      message: "Outside advisory range.",
     }];
     marketApi.runWhatIf.mockResolvedValue(advisory);
     const onResult = vi.fn();
-    render(<WhatIfForm onResult={onResult} />);
+    render(<WhatIfForm marketOverview={marketOverview} onResult={onResult} />);
     await fillProperty(user);
 
     await user.click(screen.getByRole("button", { name: "Run what-if" }));
@@ -155,7 +157,7 @@ describe("estimator and market forms", () => {
     marketApi.runWhatIf.mockRejectedValue(new PortalApiError(
       "Prediction is temporarily unavailable.", "SERVICE_UNAVAILABLE", "reference",
     ));
-    render(<WhatIfForm onResult={vi.fn()} />);
+    render(<WhatIfForm marketOverview={marketOverview} onResult={vi.fn()} />);
     await fillProperty(user);
     await user.click(screen.getByRole("button", { name: "Run what-if" }));
 

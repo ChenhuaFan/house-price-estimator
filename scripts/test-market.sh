@@ -38,10 +38,25 @@ until docker exec "${database_container}" pg_isready --username market_test --db
 done
 
 docker run --rm --network "${test_network}" \
-  --env MARKET_TEST_JDBC_URL="jdbc:postgresql://${database_container}:5432/housing" \
-  --env MARKET_TEST_DATABASE_USER=market_test \
-  --env MARKET_TEST_DATABASE_PASSWORD=market_test \
+  --volume "${project_root}/database/migrations:/flyway/sql:ro" \
+  flyway/flyway:11-alpine \
+  -url="jdbc:postgresql://${database_container}:5432/housing" \
+  -user=market_test \
+  -password=market_test \
+  -placeholders.database_name=housing \
+  -placeholders.training_password=training_test \
+  -placeholders.model_password=model_test \
+  -placeholders.estimator_password=estimator_test \
+  -placeholders.market_password=market_test \
+  migrate
+
+docker run --rm --network "${test_network}" \
+  --env MARKET_DATABASE_URL="jdbc:postgresql://${database_container}:5432/housing" \
+  --env MARKET_DATABASE_USER=market_runtime \
+  --env MARKET_DATABASE_PASSWORD=market_test \
+  --env MARKET_CURSOR_HMAC_SECRET="test-cursor-secret-at-least-32-characters" \
+  --env MARKET_EXPORT_ROOT=/tmp/market-service-test-exports \
   --volume hsbc-maven-cache:/root/.m2 \
-  --volume "${project_root}/market-service:/workspace" \
-  --workdir /workspace \
-  maven:3.9.9-eclipse-temurin-21 mvn -B verify
+  --volume "${project_root}:/workspace" \
+  --workdir /workspace/market-service \
+  maven:3.9.9-eclipse-temurin-21 ./mvnw -B -ntp clean verify

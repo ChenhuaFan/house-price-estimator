@@ -1,0 +1,74 @@
+server:
+  port: 8080
+  shutdown: graceful
+  compression:
+    enabled: true
+    mime-types: application/json,text/csv
+    min-response-size: 1024
+
+spring:
+  application:
+    name: market-service
+  mvc:
+    problemdetails:
+      enabled: false
+  jackson:
+    default-property-inclusion: non_null
+    deserialization:
+      fail-on-unknown-properties: true
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    url: /openapi/market-service-v2.yaml
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,marketDatabase,exportStorage
+        liveness:
+          include: livenessState
+  metrics:
+    tags:
+      service: market-service
+
+market:
+  database:
+    url: ${MARKET_DATABASE_URL:jdbc:postgresql://localhost:5432/housing}
+    username: ${MARKET_DATABASE_USER:market_runtime}
+    password: ${MARKET_DATABASE_PASSWORD:market}
+    query-pool-size: 8
+    export-pool-size: 2
+    connection-timeout: 2s
+    query-timeout: 3s
+    export-timeout: 120s
+  model-service:
+    base-url: ${MODEL_SERVICE_URL:http://localhost:8000}
+    connect-timeout: ${MODEL_CONNECT_TIMEOUT:1s}
+    response-timeout: ${MODEL_RESPONSE_TIMEOUT:3s}
+    max-concurrency: 8
+  export:
+    root: ${MARKET_EXPORT_ROOT:/var/lib/market-service/exports}
+    workers: 2
+    queue-capacity: 20
+    retention: 24h
+    max-bytes: 512MB
+    max-runtime: 120s
+    csv-max-rows: 1000000
+    lease: 3m
+    poll-interval: 500ms
+    recovery-interval: 30s
+    cleanup-interval: 10m
+  cursor:
+    hmac-secret: ${MARKET_CURSOR_HMAC_SECRET}
+  portal-origin: ${PORTAL_ORIGIN:http://localhost:3000}

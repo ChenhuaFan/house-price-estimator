@@ -1,0 +1,13 @@
+.git
+**/target
+**/.mypy_cache
+**/.pytest_cache
+**/__pycache__
+**/*.pyc
+web-portal/node_modules
+web-portal/.next
+training/runs
+training/data/snapshots
+training/artifacts
+design-concepts
+design-system

@@ -7,6 +7,7 @@ This document is the authoritative persistence design for the project. Runtime c
 - the central, versioned housing dataset used by market analysis and model training;
 - the registry records written by the offline training subsystem;
 - the anonymous estimate history created through the Property Value Estimator;
+- durable market export job state used for idempotency, cancellation, lease recovery, and cleanup;
 - filesystem ownership for exported dataset snapshots and published model artifacts;
 - database roles, migration ownership, lifecycle rules, and integrity constraints.
 
@@ -24,9 +25,10 @@ The source PDF does not require a database or training dashboard. PostgreSQL, ve
 | Model version, artifact locations, hashes, and lifecycle | PostgreSQL `ml_registry.model_versions` | Controlled registry functions called by training | `model-service`, operational inspection |
 | Model binary and version-matched metadata | `training/artifacts/` persistent filesystem | Training workspace | `model-service` |
 | Anonymous client identity and estimates | PostgreSQL `estimator` schema | `estimator-service` | `estimator-service` |
+| Durable market export jobs and artifact metadata | PostgreSQL `market_ops` schema | `market-service` | `market-service` |
 | Active market filters and sort | Browser URL/query state | Web portal | Web portal, market API |
 | Market aggregate results | Derived on demand; optionally Caffeine | `market-service` | Web portal and exports |
-| CSV/PDF export files | Temporary request-scoped storage | `market-service` | Requesting client |
+| CSV/PDF export files | Bounded temporary persistent volume | `market-service` | Requesting client |
 | `Test Data For Prediction.csv` source rows | Repository fixture only | Nobody at runtime | Web/API demonstration tests |
 
 `Test Data For Prediction.csv` is never inserted into `catalog`. When its rows are submitted through the estimator, the resulting predictions are ordinary estimate-history records; the source fixture itself remains outside PostgreSQL.
@@ -54,23 +56,24 @@ Central business data flows one way from `catalog` into training. The training r
 
 ## 4. PostgreSQL Schemas and Access
 
-One PostgreSQL 17 cluster contains three logical schemas.
+One PostgreSQL 17 cluster contains four logical schemas.
 
 | Schema | Purpose | Tables |
 | --- | --- | --- |
 | `catalog` | Immutable, versioned central housing data | `dataset_versions`, `housing_records` |
 | `ml_registry` | Training-run, evaluation, and published-model registry | `training_runs`, `training_run_metrics`, `model_versions` |
 | `estimator` | Anonymous estimate history | `clients`, `estimates` |
+| `market_ops` | Durable market export orchestration state | `export_jobs` |
 
 ### Runtime Roles
 
-| Role | `catalog` | `ml_registry` | `estimator` |
-| --- | --- | --- | --- |
-| `db_migration` | DDL and seed writes | DDL | DDL |
-| `training_runtime` | `SELECT` | `SELECT` plus controlled run, evaluation, registration, and promotion functions | None |
-| `market_runtime` | `SELECT` | None | None |
-| `model_runtime` | None | `SELECT` | None |
-| `estimator_runtime` | None | No direct reads required | Table/column-scoped history privileges defined below |
+| Role | `catalog` | `ml_registry` | `estimator` | `market_ops` |
+| --- | --- | --- | --- | --- |
+| `db_migration` | DDL and seed writes | DDL | DDL | DDL |
+| `training_runtime` | `SELECT` | `SELECT` plus controlled run, evaluation, registration, and promotion functions | None | None |
+| `market_runtime` | `SELECT` | None | None | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on export jobs |
+| `model_runtime` | None | `SELECT` | None | None |
+| `estimator_runtime` | None | No direct reads required | Table/column-scoped history privileges defined below | None |
 
 The portal does not connect directly to PostgreSQL. Runtime roles have no schema-creation privileges. The `public` schema is not used for application tables.
 
@@ -80,8 +83,8 @@ After each schema's objects exist, its migration applies the equivalent of these
 
 ```sql
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON SCHEMA catalog, ml_registry, estimator FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA catalog, ml_registry, estimator FROM PUBLIC;
+REVOKE ALL ON SCHEMA catalog, ml_registry, estimator, market_ops FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA catalog, ml_registry, estimator, market_ops FROM PUBLIC;
 
 GRANT USAGE ON SCHEMA catalog TO training_runtime, market_runtime;
 GRANT SELECT ON catalog.dataset_versions, catalog.housing_records
@@ -97,6 +100,9 @@ GRANT USAGE ON SCHEMA estimator TO estimator_runtime;
 GRANT SELECT, INSERT ON estimator.clients TO estimator_runtime;
 GRANT UPDATE (last_seen_at) ON estimator.clients TO estimator_runtime;
 GRANT SELECT, INSERT, DELETE ON estimator.estimates TO estimator_runtime;
+
+GRANT USAGE ON SCHEMA market_ops TO market_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON market_ops.export_jobs TO market_runtime;
 ```
 
 `V003` separately grants `training_runtime` `EXECUTE` on the exact signatures of `start_run`, `advance_run`, `record_evaluation`, `fail_run`, `register_candidate`, and `promote_model`; revokes their default `PUBLIC` execute privilege; fixes their `search_path`; and schema-qualifies every object they access.
@@ -644,7 +650,22 @@ CREATE INDEX estimates_history_cursor_idx
 - Estimates are immutable until deletion.
 - Rows submitted from `Test Data For Prediction.csv` through the Web/API have no special marker; they are ordinary user-input history records associated with the model version that produced them.
 
-## 11. Artifact Layout
+## 11. `market_ops` Schema
+
+### 11.1 `market_ops.export_jobs`
+
+`export_jobs` is the durable control plane for asynchronous CSV and PDF generation. It stores the canonical request and its SHA-256 digest, resolved dataset version and query fingerprint, idempotency key, lifecycle status, optimistic state revision, worker lease, cancellation flag, artifact metadata, bounded failure details, and retention deadline.
+
+- `idempotency_key` is unique; reusing it with a different request digest is rejected.
+- A worker claims the oldest queued job with `FOR UPDATE SKIP LOCKED`, records a bounded lease, and performs data reads through the dedicated export query pool.
+- Cancelling a queued or running job durably changes it to `CANCELLED`; an active worker observes the flag and removes any uncommitted artifact.
+- An expired `RUNNING` lease returns to `QUEUED`, unless cancellation was requested, in which case it becomes `CANCELLED`.
+- A completed file is exposed only after an atomic storage move and a compare-and-set `SUCCEEDED` transition. The database stores only a root-relative content key, byte count, media type, and SHA-256 digest.
+- Cleanup removes the file first and then changes terminal jobs to `EXPIRED`; downloads never accept a client-supplied path.
+
+The full DDL and least-privilege grants are defined by `V007__create_market_export_jobs.sql`.
+
+## 12. Artifact Layout
 
 Canonical training-run and model-artifact layout:
 
@@ -665,7 +686,7 @@ The run and artifact roots are persistent local volumes writable by the training
 
 No generated snapshot or artifact is required to be committed to Git. Source code, migrations, schemas, and documentation are committed.
 
-## 12. Centralized SQL Migrations
+## 13. Centralized SQL Migrations
 
 All PostgreSQL schemas and seed data use one ordered SQL migration set, applied by a one-shot migration container before application readiness.
 
@@ -677,9 +698,12 @@ database/migrations/
   V004__create_estimator_tables.sql
   V005__seed_house_price_dataset_v1.sql
   V006__drop_estimate_warnings.sql
+  V007__create_market_export_jobs.sql
 ```
 
 `V006` removes the obsolete estimator warning table introduced by the historical `V004` migration. Applied migrations remain immutable; a clean database reaches the same final two-table `estimator` schema after the complete migration chain.
+
+`V007` creates `market_ops.export_jobs`, its claim and expiry indexes, and the minimum runtime grants required by `market-service`.
 
 `V005` must:
 
@@ -693,12 +717,13 @@ Migrations must be reproducible against an empty database and verified through c
 
 For a clean environment, the explicit bootstrap order is: apply migrations, export the selected dataset version, train and evaluate, publish one active model, then start or mark the application services ready. A root `make bootstrap` command may orchestrate this sequence. Normal service startup must not invoke training, and `model-service` readiness must remain false until it can verify and load an active registered artifact.
 
-## 13. Required Integration Tests
+## 14. Required Integration Tests
 
 - A clean database applies every migration and contains one active `house-price-v1` version with the documented filename, source hash, canonical content hash, and exactly 50 records.
 - The final `estimator` schema contains only `clients` and `estimates`; the obsolete warning table is absent after `V006`.
 - Initialization contains no dataset version, source fingerprint, or migration derived from `Test Data For Prediction.csv`.
 - Runtime grants prevent training and market roles from changing catalog data.
+- Runtime grants permit `market_runtime` to manage `market_ops.export_jobs` but prevent other runtime roles from doing so.
 - Snapshot export for a fixed dataset version is stable in order, row count, and hash.
 - Local split membership is exhaustive, disjoint, saved to the training-run directory, and contains 40 training and 10 evaluation rows for the initial 50-row snapshot.
 - A failed training run is durable in `ml_registry` and cannot create or activate a model version.
@@ -710,6 +735,7 @@ For a clean environment, the explicit bootstrap order is: apply migrations, expo
 - Concurrent promotion cannot produce two active model versions.
 - `model-service` refuses to start ready when the active artifact is missing or its hash differs.
 - Market tables, aggregates, charts, and exports all use one resolved catalog version per request.
+- Export creation is idempotent, running-job cancellation is durable, expired worker leases recover without allowing a stale worker to commit, and expired artifacts are removed.
 - Submitting the demonstration fixture through the estimator creates ordinary history rows without changing `catalog`.
 - Two client cookies cannot read or delete each other's estimates.
 - Money round-trips through Python, Java, PostgreSQL, JSON, CSV, and PDF without losing the fixed two-decimal value.

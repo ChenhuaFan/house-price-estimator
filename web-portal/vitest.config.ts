@@ -22,7 +22,7 @@ export default defineConfig({
         "lib/**/*.{ts,tsx}",
         "middleware.ts",
       ],
-      exclude: ["lib/api/types.ts"],
+      exclude: ["lib/api/types.ts", "lib/api/*.generated.ts"],
       thresholds: {
         lines: 80,
         branches: 70,

@@ -68,7 +68,7 @@ function applyClientCookie(response: NextResponse, identity: ClientIdentity): Ne
 export async function proxyRequest(
   request: NextRequest,
   target: URL,
-  options: { includeClient?: boolean; jsonBody?: boolean } = {},
+  options: { includeClient?: boolean; jsonBody?: boolean; forwardHeaders?: string[] } = {},
 ): Promise<NextResponse> {
   const correlation = correlationId(request);
   if (!correlation) {
@@ -81,6 +81,10 @@ export async function proxyRequest(
   const identity = clientIdentity(request);
   const outgoingHeaders = new Headers({ "X-Correlation-ID": correlation });
   if (options.includeClient) outgoingHeaders.set("X-Estimator-Client-ID", identity.id);
+  for (const name of options.forwardHeaders ?? []) {
+    const value = request.headers.get(name);
+    if (value) outgoingHeaders.set(name, value);
+  }
 
   let body: string | undefined;
   if (options.jsonBody) {
@@ -117,10 +121,13 @@ export async function proxyRequest(
   }
 
   const responseHeaders = new Headers();
-  const contentType = downstream.headers.get("content-type");
-  const disposition = downstream.headers.get("content-disposition");
-  if (contentType) responseHeaders.set("Content-Type", contentType);
-  if (disposition) responseHeaders.set("Content-Disposition", disposition);
+  for (const name of [
+    "content-type", "content-disposition", "content-length", "content-digest",
+    "etag", "location", "retry-after",
+  ]) {
+    const value = downstream.headers.get(name);
+    if (value) responseHeaders.set(name, value);
+  }
   responseHeaders.set("X-Correlation-ID", downstream.headers.get("x-correlation-id") ?? correlation);
   const response = new NextResponse(downstream.status === 204 ? null : downstream.body, {
     status: downstream.status,
@@ -138,7 +145,7 @@ export function serviceUrl(service: "estimator" | "market", path: string): URL {
 
 export function copyAllowedQuery(source: URLSearchParams, target: URL): URL {
   for (const [key, value] of source.entries()) {
-    if (/^[A-Za-z][A-Za-z0-9]*$/.test(key) && value.length <= MAX_QUERY_VALUE_LENGTH) {
+    if (/^[A-Za-z][A-Za-z0-9_]*$/.test(key) && value.length <= MAX_QUERY_VALUE_LENGTH) {
       target.searchParams.append(key, value);
     }
   }

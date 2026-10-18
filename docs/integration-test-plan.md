@@ -22,7 +22,7 @@ End-user flows and usability are defined in [`e2e-test-plan.md`](e2e-test-plan.m
 | Scope | Required tools | Boundary under test |
 | --- | --- | --- |
 | Python services and training | pytest, FastAPI test client or HTTPX, mypy, Ruff, Testcontainers where needed | Validation, model loading/inference, training files, registry and HTTP contracts |
-| Java market service | JUnit 5, Spring Boot Test, MockMvc/WebTestClient, Testcontainers, controllable cache clock | REST, JDBC, aggregation, caching, export generation, model-service client |
+| Java market service | JUnit 5, Spring Boot Test, MockMvc, focused MyBatis tests, Testcontainers, controllable cache clock | Controller -> Service -> DAO -> Mapper XML -> PostgreSQL, aggregation, caching, export generation, model-service client |
 | Next.js portal | Vitest, React Testing Library, MSW for component-only branches, production Next.js server for integration | Route handlers, RSC initial load, cookie/header forwarding, error translation, client/server boundaries |
 | Contracts | OpenAPI 3.1 validator plus generated or schema-driven consumer checks | Provider schemas, media types, error envelopes, compatibility |
 | Containers and orchestration | Docker Compose v2, image inspection, health checks | Runtime versions, non-root images, networks, volumes, restart behaviour |
@@ -85,6 +85,7 @@ Canonical validation cases include missing values, booleans, numeric strings, fr
 
 | ID | Pri | Method and required assertions |
 | --- | --- | --- |
+| **INT-MARKET-000 - Layer and Mapper XML boundaries** | P0 | Run architecture/static checks that enforce Controller -> Service -> DAO -> Mapper. Assert Controllers cannot import DAO/Mapper packages, Services cannot import Mapper or `SqlSession`, DAOs are `@Repository` beans, Mapper interfaces are `@Mapper` types used only by DAOs/export streaming components, every Mapper method resolves to a statement in `src/main/resources/mapper/**/*.xml`, and no SQL annotation or Java SQL Provider remains. Start the focused MyBatis context against disposable PostgreSQL to prove Mapper XML namespaces, parameter types, result mappings, and both `SqlSessionTemplate` bindings load successfully. |
 | **INT-MARKET-001 - Default analysis, aggregates, and chart DTOs** | P0 | Query the active dataset with no filters. Assert matching count 50, bounded table page, stable source-ID tie-breaker, resolved dataset UUID/hash, and aggregates calculated with `BigDecimal` where monetary. Independently query the same rows and compare statistics and chart bucket totals; all chart/table/aggregate data must describe the same version and record set. |
 | **INT-MARKET-002 - Filter, sort, page, and version consistency** | P0 | Parameterise inclusive lower/upper filters for price and all seven features, combined filters, empty results, invalid ranges, every supported sort/direction, and multiple pages. Assert normalized equivalent queries match, invalid queries fail structurally, stable tie-breaking prevents row drift, and an explicitly resolved immutable version is reused for subsequent export requests. |
 | **INT-MARKET-003 - Bounded versioned cache** | P0 | Repeat equivalent normalized queries and assert Spring Cache/Caffeine hits; vary filters, sort/page, dataset hash, and relevant model version and assert distinct keys. Advance a controllable clock past five minutes and exceed the size bound. Assert expiry/eviction causes reconstruction, activation never returns an old version under a new key, restart loses cache only, and authoritative results remain unchanged. |
@@ -221,7 +222,7 @@ The source PDF also contains technology, architecture, UI, and delivery clauses 
 | Estimator all-field form, validation, table, chart, history, and comparison | `E2E-EST-001` through `E2E-EST-005` |
 | Python estimator form handling, model integration, validation, and errors | `INT-EST-001`, `INT-PORTAL-001`, `E2E-EST-002`, `E2E-FAIL-001` |
 | Market dashboard, visualisations, segment filters, what-if, exports, and responsive sortable/filterable table | `E2E-MARKET-001` through `E2E-MARKET-005`, `E2E-UX-001` |
-| Java REST endpoints, aggregates, shared-model integration, and caching | `INT-MARKET-001` through `INT-MARKET-004`, `INT-CONTRACT-001` |
+| Java layered boundaries, REST endpoints, aggregates, shared-model integration, and caching | `INT-MARKET-000` through `INT-MARKET-004`, `INT-CONTRACT-001` |
 | Task 2 Python 3.12+ and FastAPI estimator backend | `INT-DEPLOY-001`, `INT-CONTRACT-001`, `INT-EST-001` |
 | React Server Components for initial data and appropriate Server/Client Components | `INT-PORTAL-002` |
 | Appropriate data fetching, custom hooks, client/form state, and API/error handling | `INT-PORTAL-001`, `INT-PORTAL-002`, `E2E-PORTAL-002`, `E2E-EST-002` |

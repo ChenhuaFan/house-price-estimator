@@ -1,6 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach } from "vitest";
+import { createElement } from "react";
+import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
+
+vi.mock("react-chartjs-2", () => ({
+  Bar: (props: Record<string, unknown>) => createElement("canvas", { "data-chart": "bar", "aria-hidden": props["aria-hidden"] }),
+  Line: (props: Record<string, unknown>) => createElement("canvas", { "data-chart": "line", "aria-hidden": props["aria-hidden"] }),
+}));
 
 afterEach(() => cleanup());
 

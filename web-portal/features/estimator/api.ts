@@ -6,6 +6,8 @@ export class PortalApiError extends Error {
     public readonly code: string,
     public readonly correlationId?: string,
     public readonly fields: Array<{ field: string; message: string }> = [],
+    public readonly status = 0,
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message);
   }
@@ -24,6 +26,8 @@ async function responseBody<T>(response: Response): Promise<T> {
     body.error?.code ?? "REQUEST_FAILED",
     body.correlation_id ?? response.headers.get("x-correlation-id") ?? undefined,
     body.error?.fields ?? [],
+    response.status,
+    Number(response.headers.get("retry-after")) || undefined,
   );
 }
 
@@ -36,8 +40,9 @@ export async function createEstimate(input: PropertyInput, requestId: string): P
   return responseBody<Estimate>(response);
 }
 
-export async function loadHistory(cursor: string): Promise<HistoryPage> {
-  const query = new URLSearchParams({ limit: "20", cursor });
+export async function loadHistory(cursor?: string | null): Promise<HistoryPage> {
+  const query = new URLSearchParams({ limit: "20" });
+  if (cursor) query.set("cursor", cursor);
   const response = await fetch(`/api/estimator/estimates?${query}`, { cache: "no-store" });
   return responseBody<HistoryPage>(response);
 }

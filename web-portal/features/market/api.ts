@@ -1,4 +1,5 @@
-import type { ApiErrorBody, PropertyInput, WhatIfResponse } from "@/lib/api/types";
+import type { ApiErrorBody, ExportJob, PropertyInput, WhatIfResponse } from "@/lib/api/types";
+import type { ExportCreateRequestWire, WhatIfResponseWire } from "@/features/market/model";
 import { PortalApiError } from "@/features/estimator/api";
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -14,36 +15,68 @@ async function parseResponse<T>(response: Response): Promise<T> {
     body.error?.code ?? "REQUEST_FAILED",
     body.correlation_id ?? response.headers.get("x-correlation-id") ?? undefined,
     body.error?.fields ?? [],
+    response.status,
+    Number(response.headers.get("retry-after")) || undefined,
   );
+}
+
+function correlationHeaders(extra: HeadersInit = {}): Headers {
+  const headers = new Headers(extra);
+  headers.set("X-Correlation-ID", crypto.randomUUID());
+  return headers;
+}
+
+function whatIfInput(input: PropertyInput): WhatIfResponseWire["inputs"] {
+  return {
+    square_footage: input.square_footage,
+    bedrooms: input.bedrooms,
+    bathrooms: input.bathrooms.toFixed(1),
+    year_built: input.year_built,
+    lot_size: input.lot_size,
+    distance_to_city_center: input.distance_to_city_center.toFixed(3),
+    school_rating: input.school_rating.toFixed(3),
+  };
 }
 
 export async function runWhatIf(input: PropertyInput): Promise<WhatIfResponse> {
   const response = await fetch("/api/market/what-if", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Correlation-ID": crypto.randomUUID() },
-    body: JSON.stringify(input),
+    headers: correlationHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(whatIfInput(input)),
   });
   return parseResponse<WhatIfResponse>(response);
 }
 
-export async function downloadPdf(query: URLSearchParams, whatIf: WhatIfResponse | null): Promise<void> {
-  const response = await fetch(`/api/market/exports/report.pdf?${query}`, {
+export async function createExport(
+  request: ExportCreateRequestWire,
+  idempotencyKey: string,
+): Promise<{ job: ExportJob; retryAfterSeconds: number }> {
+  const response = await fetch("/api/market/exports", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Correlation-ID": crypto.randomUUID() },
-    body: JSON.stringify(whatIf),
+    headers: correlationHeaders({
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    }),
+    body: JSON.stringify(request),
   });
-  if (!response.ok) await parseResponse<never>(response);
-  const blob = await response.blob();
-  triggerDownload(blob, "property-market-analysis.pdf");
+  const job = await parseResponse<ExportJob>(response);
+  return { job, retryAfterSeconds: Number(response.headers.get("retry-after")) || 2 };
 }
 
-function triggerDownload(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+export async function getExport(exportId: string, signal?: AbortSignal): Promise<{ job: ExportJob; retryAfterSeconds: number }> {
+  const response = await fetch(`/api/market/exports/${encodeURIComponent(exportId)}`, {
+    cache: "no-store",
+    headers: correlationHeaders(),
+    signal,
+  });
+  const job = await parseResponse<ExportJob>(response);
+  return { job, retryAfterSeconds: Number(response.headers.get("retry-after")) || 2 };
+}
+
+export async function cancelExport(exportId: string): Promise<void> {
+  const response = await fetch(`/api/market/exports/${encodeURIComponent(exportId)}`, {
+    method: "DELETE",
+    headers: correlationHeaders(),
+  });
+  if (!response.ok) await parseResponse<never>(response);
 }

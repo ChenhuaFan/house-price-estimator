@@ -12,7 +12,7 @@ import { MarketCharts } from "@/features/market/market-charts";
 import { MarketTable } from "@/features/market/market-table";
 import { formatMoney, formatNumber, formatTimestamp } from "@/lib/format";
 import { emptyPropertyDraft } from "@/lib/validation/property";
-import { estimate, marketAnalysis } from "@/tests/fixtures";
+import { estimate, marketPageModel } from "@/tests/fixtures";
 
 const navigation = vi.hoisted(() => ({
   pathname: "/estimator",
@@ -39,8 +39,8 @@ describe("shared and presentation components", () => {
     render(<AppHeader />);
     expect(screen.getByRole("link", { name: "Housing Intelligence Portal home" }))
       .toHaveAttribute("href", "/estimator");
-    expect(screen.getByRole("link", { name: "Property estimator" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "Market analysis" })).not.toHaveAttribute("aria-current");
+    expect(screen.getAllByRole("link", { name: "Property estimator" }).every((link) => link.getAttribute("aria-current") === "page")).toBe(true);
+    expect(screen.getAllByRole("link", { name: "Market analysis" }).every((link) => !link.hasAttribute("aria-current"))).toBe(true);
   });
 
   it("renders accessible field help, errors, changes, and blur callbacks", async () => {
@@ -93,7 +93,7 @@ describe("shared and presentation components", () => {
 
   it("shows both the empty and successful estimate result", () => {
     const { rerender } = render(<EstimateResult estimate={null} />);
-    expect(screen.getByRole("heading", { name: "Ready when you are" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ready for an estimate" })).toBeInTheDocument();
     const result = estimate();
     rerender(<EstimateResult estimate={result} />);
     expect(screen.getAllByText("$237,354.67").length).toBeGreaterThan(1);
@@ -117,6 +117,7 @@ describe("shared and presentation components", () => {
     const second = estimate("33333333-3333-4333-8333-333333333333");
     const onToggle = vi.fn();
     const onView = vi.fn();
+    const onReuse = vi.fn();
     const onDelete = vi.fn().mockResolvedValue(undefined);
     const onClear = vi.fn().mockResolvedValue(undefined);
     const onLoadMore = vi.fn().mockResolvedValue(undefined);
@@ -128,6 +129,7 @@ describe("shared and presentation components", () => {
       busy={false}
       onToggle={onToggle}
       onView={onView}
+      onReuse={onReuse}
       onDelete={onDelete}
       onClear={onClear}
       onLoadMore={onLoadMore}
@@ -141,6 +143,7 @@ describe("shared and presentation components", () => {
       busy={false}
       onToggle={onToggle}
       onView={onView}
+      onReuse={onReuse}
       onDelete={onDelete}
       onClear={onClear}
       onLoadMore={onLoadMore}
@@ -152,6 +155,8 @@ describe("shared and presentation components", () => {
     await user.click(screen.getByRole("button", { name: "Load more history" }));
     expect(onToggle).toHaveBeenCalledWith(second.estimate_id);
     expect(onView).toHaveBeenCalledWith(first.estimate_id);
+    await user.click(screen.getAllByRole("button", { name: "Use as scenario" })[0]!);
+    expect(onReuse).toHaveBeenCalledWith(first.estimate_id);
     expect(onDelete).toHaveBeenCalledWith(first.estimate_id);
     expect(onClear).toHaveBeenCalledOnce();
     expect(onLoadMore).toHaveBeenCalledOnce();
@@ -171,6 +176,7 @@ describe("shared and presentation components", () => {
       busy={false}
       onToggle={vi.fn()}
       onView={vi.fn()}
+      onReuse={vi.fn()}
       onDelete={onDelete}
       onClear={onClear}
       onLoadMore={vi.fn()}
@@ -184,40 +190,43 @@ describe("shared and presentation components", () => {
 
   it("renders chart alternatives for populated and empty data", () => {
     const { rerender } = render(<MarketCharts
-      priceByBedrooms={marketAnalysis.charts.average_price_by_bedrooms}
-      countBySchoolBand={marketAnalysis.charts.property_count_by_school_band}
+      priceByBedrooms={marketPageModel.charts.averagePriceByBedrooms}
+      countBySchoolBand={marketPageModel.charts.propertyCountBySchoolBand}
     />);
     expect(screen.getByRole("img", { name: /Average price by bedrooms/ })).toHaveAccessibleName(/\$250,000.00/);
-    expect(screen.getAllByText(/8\+: 2/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/8–10: 2/).length).toBeGreaterThan(0);
     rerender(<MarketCharts priceByBedrooms={[]} countBySchoolBand={[]} />);
     expect(screen.getAllByText("No matching data to chart.")).toHaveLength(2);
   });
 
   it("renders market records and drives stable sorting and pagination", async () => {
     const user = userEvent.setup();
-    const paged = { ...marketAnalysis, matchingCount: 45, size: 20 };
-    render(<MarketTable analysis={paged} sort="source_id" direction="asc" />);
+    const paged = marketPageModel;
+    const onSort = vi.fn();
+    const onNext = vi.fn();
+    render(<MarketTable model={paged} onSort={onSort} onNext={onNext} onBack={vi.fn()} />);
     expect(screen.getByText("$250,000.00")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /ID/ })).toHaveAttribute("aria-sort", "ascending");
 
     await user.click(screen.getByRole("button", { name: "Actual price" }));
-    expect(navigation.push).toHaveBeenCalledWith(expect.stringContaining("sort=price"));
-    expect(navigation.push).toHaveBeenCalledWith(expect.stringContaining("direction=asc"));
-    await user.click(screen.getByRole("button", { name: "Next page" }));
-    expect(navigation.push).toHaveBeenLastCalledWith(expect.stringContaining("page=1"));
+    expect(onSort).toHaveBeenCalledWith("price");
+    await user.click(screen.getByRole("button", { name: "Next results" }));
+    expect(onNext).toHaveBeenCalledOnce();
   });
 
   it("shows the market empty state and reverses an active ascending sort", async () => {
     const user = userEvent.setup();
+    const onSort = vi.fn();
     render(<MarketTable
-      analysis={{ ...marketAnalysis, records: [], matchingCount: 0 }}
-      sort="price"
-      direction="asc"
+      model={{ ...marketPageModel, records: [], overview: { ...marketPageModel.overview, count: "0" }, page: { limit: 20, hasMore: false, nextCursor: null }, query: { ...marketPageModel.query, sort: "price:asc" } }}
+      onSort={onSort}
+      onNext={vi.fn()}
+      onBack={vi.fn()}
     />);
     expect(screen.getByText(/No properties match this segment/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Previous results" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next results" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: /Actual price/ }));
-    expect(navigation.push).toHaveBeenCalledWith(expect.stringContaining("direction=desc"));
+    expect(onSort).toHaveBeenCalledWith("price");
   });
 });

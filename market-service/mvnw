@@ -1,0 +1,142 @@
+#!/bin/sh
+# ----------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements. See the NOTICE file distributed
+# with this work for additional information regarding copyright ownership.
+# The ASF licenses this file to you under the Apache License, Version 2.0.
+# ----------------------------------------------------------------------------
+
+set -euf
+[ "${MVNW_VERBOSE-}" != debug ] || set -x
+
+native_path() { printf %s\\n "$1"; }
+case "$(uname)" in
+CYGWIN* | MINGW*)
+  [ -z "${JAVA_HOME-}" ] || JAVA_HOME="$(cygpath --unix "$JAVA_HOME")"
+  native_path() { cygpath --path --windows "$1"; }
+  ;;
+esac
+
+set_java_home() {
+  if [ -n "${JAVA_HOME-}" ]; then
+    if [ -x "$JAVA_HOME/jre/sh/java" ]; then
+      JAVACMD="$JAVA_HOME/jre/sh/java"
+      JAVACCMD="$JAVA_HOME/jre/sh/javac"
+    else
+      JAVACMD="$JAVA_HOME/bin/java"
+      JAVACCMD="$JAVA_HOME/bin/javac"
+      if [ ! -x "$JAVACMD" ] || [ ! -x "$JAVACCMD" ]; then
+        echo "JAVA_HOME does not contain executable java and javac commands." >&2
+        return 1
+      fi
+    fi
+  else
+    JAVACMD="$(command -v java)" || :
+    JAVACCMD="$(command -v javac)" || :
+    if [ ! -x "${JAVACMD-}" ] || [ ! -x "${JAVACCMD-}" ]; then
+      echo "java and javac are not available; set JAVA_HOME to a JDK." >&2
+      return 1
+    fi
+  fi
+}
+
+hash_string() {
+  str="${1:-}" h=0
+  while [ -n "$str" ]; do
+    char="${str%"${str#?}"}"
+    h=$(((h * 31 + $(LC_CTYPE=C printf %d "'$char")) % 4294967296))
+    str="${str#?}"
+  done
+  printf %x\\n "$h"
+}
+
+verbose() { :; }
+[ "${MVNW_VERBOSE-}" != true ] || verbose() { printf %s\\n "${1-}"; }
+die() { printf %s\\n "$1" >&2; exit 1; }
+trim() { printf "%s" "$1" | tr -d '[:space:]'; }
+
+script_dir="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+while IFS="=" read -r key value; do
+  case "${key-}" in
+  distributionUrl) distribution_url=$(trim "${value-}") ;;
+  distributionSha256Sum) distribution_sha256=$(trim "${value-}") ;;
+  esac
+done <"$script_dir/.mvn/wrapper/maven-wrapper.properties"
+[ -n "${distribution_url-}" ] || die "cannot read distributionUrl from maven-wrapper.properties"
+
+case "${distribution_url##*/}" in
+*-bin.zip) ;;
+*) die "distributionUrl must refer to a Maven binary zip" ;;
+esac
+
+[ -z "${MVNW_REPOURL-}" ] || distribution_url="$MVNW_REPOURL/org/apache/maven/${distribution_url#*/org/apache/maven/}"
+distribution_name="${distribution_url##*/}"
+distribution_dir="${distribution_name%.zip}"
+distribution_dir="${distribution_dir%-bin}"
+maven_user_home="${MAVEN_USER_HOME:-${HOME}/.m2}"
+maven_home="$maven_user_home/wrapper/dists/$distribution_dir/$(hash_string "$distribution_url")"
+
+exec_maven() {
+  unset MVNW_VERBOSE MVNW_USERNAME MVNW_PASSWORD MVNW_REPOURL || :
+  exec "$maven_home/bin/mvn" "$@"
+}
+[ ! -x "$maven_home/bin/mvn" ] || exec_maven "$@"
+
+download_dir="$(mktemp -d)"
+clean() { rm -rf -- "$download_dir"; }
+trap clean HUP INT TERM EXIT
+mkdir -p -- "${maven_home%/*}"
+archive="$download_dir/$distribution_name"
+verbose "Downloading Maven from $distribution_url"
+
+if [ -z "${MVNW_USERNAME-}" ] && command -v curl >/dev/null; then
+  curl -fsSL "$distribution_url" -o "$archive" || die "failed to download Maven"
+elif [ -z "${MVNW_USERNAME-}" ] && command -v wget >/dev/null; then
+  wget -q "$distribution_url" -O "$archive" || die "failed to download Maven"
+elif set_java_home; then
+  downloader="$download_dir/Downloader.java"
+  printf '%s\n' \
+    'public class Downloader {' \
+    '  public static void main(String[] args) throws Exception {' \
+    '    java.nio.file.Files.copy(java.net.URI.create(args[0]).toURL().openStream(),' \
+    '      java.nio.file.Paths.get(args[1]), java.nio.file.StandardCopyOption.REPLACE_EXISTING);' \
+    '  }' \
+    '}' >"$downloader"
+  "$(native_path "$JAVACCMD")" "$(native_path "$downloader")"
+  "$(native_path "$JAVACMD")" -cp "$(native_path "$download_dir")" Downloader \
+    "$distribution_url" "$(native_path "$archive")"
+else
+  die "curl, wget, or a JDK is required to download Maven"
+fi
+
+if [ -n "${distribution_sha256-}" ]; then
+  if command -v sha256sum >/dev/null; then
+    echo "$distribution_sha256  $archive" | sha256sum -c - >/dev/null 2>&1 || die "Maven checksum mismatch"
+  elif command -v shasum >/dev/null; then
+    echo "$distribution_sha256  $archive" | shasum -a 256 -c >/dev/null 2>&1 || die "Maven checksum mismatch"
+  else
+    die "sha256sum or shasum is required for checksum validation"
+  fi
+fi
+
+if command -v unzip >/dev/null; then
+  unzip -q "$archive" -d "$download_dir"
+else
+  tarball="$download_dir/${distribution_name%.zip}.tar.gz"
+  tar_url="${distribution_url%.zip}.tar.gz"
+  if command -v curl >/dev/null; then
+    curl -fsSL "$tar_url" -o "$tarball"
+  elif command -v wget >/dev/null; then
+    wget -q "$tar_url" -O "$tarball"
+  else
+    die "unzip is required when no curl or wget command is available"
+  fi
+  tar xzf "$tarball" -C "$download_dir"
+fi
+
+extracted="$download_dir/$distribution_dir"
+[ -x "$extracted/bin/mvn" ] || die "downloaded archive did not contain Maven"
+mv -- "$extracted" "$maven_home" || [ -x "$maven_home/bin/mvn" ] || die "failed to install Maven"
+clean
+trap - HUP INT TERM EXIT
+exec_maven "$@"

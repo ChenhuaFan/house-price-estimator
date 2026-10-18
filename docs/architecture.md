@@ -27,7 +27,8 @@ Workloads are classified before technologies are assigned:
 | Portal rendering and browser API mediation | Synchronous HTTP | Stateless |
 | Single/batch inference | Synchronous HTTP | Verified model held in process memory |
 | Estimation and history | Synchronous HTTP plus one local database transaction | PostgreSQL `estimator` schema |
-| Market queries, statistics, charts, and exports | Synchronous HTTP | PostgreSQL `catalog`; disposable in-process cache |
+| Market queries, statistics, and charts | Synchronous HTTP | PostgreSQL `catalog`; disposable in-process cache |
+| Market CSV/PDF exports | Asynchronous durable jobs plus synchronous status/download HTTP | PostgreSQL `market_ops` job metadata; bounded export storage |
 | Dataset export, model training, evaluation, and publication | Explicit one-shot CLI/container workflow | Snapshot/run/artifact files plus PostgreSQL `ml_registry` |
 | Schema creation and initial seed | Explicit one-shot migration job | PostgreSQL |
 
@@ -84,10 +85,10 @@ Every long-running component, including Next.js and both FastAPI applications, r
 
 | Unit | Runtime | Responsibility | Authoritative state |
 | --- | --- | --- | --- |
-| `web-portal` | Next.js 15 / Node.js 20 | Shared layout, navigation, React Server Component loading, browser-facing route handlers, forms, charts, tables, and downloads | None |
+| `web-portal` | Next.js 15 / Node.js 20 | Server-rendered application shell, client-side business-data loading, browser-facing route handlers, forms, charts, tables, and downloads | None |
 | `model-service` | Python 3.12 / FastAPI / Scikit-learn | Task 1 prediction, model information, health, active-model loading, and artifact verification | None; reads `ml_registry` and model artifacts |
 | `estimator-service` | Python 3.12 / FastAPI | Estimator validation, model orchestration, anonymous history, deletion, and comparison data | PostgreSQL `estimator` schema |
-| `market-service` | Java 21 / Spring Boot 3.4.4 | Versioned market queries, aggregates, chart series, sorting/filtering, what-if calls, Caffeine caching, and CSV/PDF generation | None; reads PostgreSQL `catalog` |
+| `market-service` | Java 21 / Spring Boot 3.4.4 | Versioned market queries, aggregates, chart series, sorting/filtering, what-if calls, Caffeine caching, and CSV/PDF generation | Reads PostgreSQL `catalog`; writes `market_ops.export_jobs` and bounded export files |
 
 CSV and PDF generation belong to `market-service`. They use the same resolved dataset version, normalized filters, sort, aggregate result, chart series, and what-if result as the dashboard. A separate `report-service` would add a deployment boundary without independent data ownership, scaling needs, or lifecycle ownership.
 
@@ -118,16 +119,15 @@ The implementation should use explicit top-level ownership rather than a monorep
     artifacts/
   database/
     migrations/
-  contracts/
-    openapi/
   docs/
+    openapi/
   compose.yaml
   compose.api-debug.yaml
   .env.lan.example
   Makefile
 ```
 
-Each deployable unit owns its build manifest, tests, and container definition. `contracts/openapi/` holds reviewed OpenAPI 3.1 contracts used by providers, consumers, and contract tests. Generated runtime data remains ignored by Git.
+Each deployable unit owns its build manifest, tests, and container definition. `docs/openapi/` holds reviewed OpenAPI 3.1 contracts used by providers, consumers, and contract tests. Generated runtime data remains ignored by Git.
 
 ## 6. Component Responsibilities
 
@@ -136,8 +136,9 @@ Each deployable unit owns its build manifest, tests, and container definition. `
 The portal is the only browser-facing application surface.
 
 - The App Router exposes `/estimator` and `/market` beneath one shared layout and design system.
-- React Server Components perform initial reads through server-side route handlers or typed server clients.
-- Client Components own interactive forms, filter controls, comparison selection, tables, and chart interaction.
+- React Server Components render the shared shell, navigation, page titles, and non-business explanatory content.
+- Client Components load business data through same-origin BFF routes and own interactive forms, filter controls, comparison selection, tables, and chart interaction.
+- Smart feature containers own requests, mutations, URL state, and export orchestration; presentational views receive data and callbacks without importing routing or transport concerns.
 - URL query parameters are the source of truth for market filters, sort, page, and selected dataset version so views are refreshable and shareable.
 - Browser-facing route handlers act as a small backend-for-frontend: they forward the opaque client cookie, add correlation metadata, normalize downstream errors, and stream CSV/PDF responses.
 - The portal never performs SQL, loads model artifacts, or owns business data.
@@ -176,14 +177,27 @@ Failed validation, model timeouts, model-domain errors, and database rollbacks c
 
 The market service owns the Property Market Analysis use case.
 
+Internally it follows the conventional Spring layered call chain used by the team:
+
+```text
+Controller
+  -> Service
+    -> DAO (@Repository)
+      -> MyBatis Mapper (@Mapper)
+        -> mapper XML
+          -> PostgreSQL
+```
+
+Controllers implement the generated OpenAPI interfaces and handle only HTTP concerns. Services own business validation, orchestration, caching decisions, and transaction boundaries. DAO classes are the only database-facing types used by Services. Mapper interfaces and their XML files contain SQL and result mappings. The detailed package layout and layer rules are defined in [`spring-boot-technical-design.md`](spring-boot-technical-design.md).
+
 - Every request resolves one explicit or active immutable dataset version before querying records.
 - One normalized filter/sort specification defines the record table, aggregate statistics, chart series, CSV, and PDF.
 - SQL performs filtering, ordering, pagination, and aggregate calculations. The application does not load the complete catalog at startup.
 - What-if analysis validates the seven inputs and calls `model-service`; it never writes the prediction into `catalog`.
-- CSV and PDF rendering consume the same immutable analysis result contract used by the dashboard.
+- CSV and PDF rendering run as bounded asynchronous jobs and consume the same immutable query definition used by the dashboard.
 - Caffeine caches only reconstructible query results. Cache keys include the dataset content hash, normalized query, sort/page where relevant, and model version for what-if results.
 
-Exports remain synchronous because the initial dataset has 50 rows and the demonstration is local. Request, row, and output-size limits prevent this decision from becoming an unbounded background workload.
+Export creation returns a durable job identifier. The portal polls job status and streams completed content from a separate endpoint. Worker, row, output-size, runtime, and retention limits keep the local implementation bounded.
 
 ### 6.5 Training workspace
 
@@ -207,7 +221,7 @@ All service contracts use `/api/v1` and OpenAPI 3.1. Health endpoints may remain
 | --- | --- | --- |
 | `model-service` | PDF-required prediction, model-info, and health operations mapped by the project to `POST /api/v1/predict`, `GET /api/v1/model-info`, and `GET /health`, plus project-defined `GET /health/live` and `GET /health/ready` | Swagger client, estimator, market |
 | `estimator-service` | `POST /api/v1/estimates`, `GET /api/v1/estimates`, `DELETE /api/v1/estimates/{id}`, `DELETE /api/v1/estimates` | Portal BFF only |
-| `market-service` | `GET /api/v1/market/analysis`, `POST /api/v1/market/what-if`, `GET /api/v1/market/exports/data.csv`, `POST /api/v1/market/exports/report.pdf` | Portal BFF only |
+| `market-service` | v2 properties/statistics/what-if operations plus export create/status/content/cancel; temporary v1 compatibility routes | Portal BFF only |
 | `web-portal` | `/estimator`, `/market`, browser-facing `/api/estimator/*` and `/api/market/*` route handlers | Browser |
 
 The exact request and response schemas live in the OpenAPI documents, not in this architecture narrative. Breaking changes require a new API version or an explicit migration decision.
@@ -256,13 +270,15 @@ The idempotency lookup is read-only. For a genuinely new key, the estimate-write
 
 ### 8.2 Market analysis and exports
 
-1. The portal sends normalized filters, sort, page, and an optional explicit `dataset_version_id`.
-2. The market service resolves exactly one immutable dataset version.
-3. PostgreSQL returns the matching page and aggregate result under that version.
-4. The service produces chart series from the same aggregate contract and returns the resolved version/hash.
+1. After the server-rendered market shell hydrates, the browser asks the portal BFF for normalized filters, sort, page, and an optional explicit `dataset_version_id`.
+2. The market Controller maps the generated contract DTO to a Service request. The Service resolves exactly one immutable dataset version and calls the DAO.
+3. The DAO calls a MyBatis Mapper whose XML statement returns the matching page or aggregate rows from PostgreSQL under that version.
+4. The Service produces the response model from the same normalized query and returns the resolved version/hash through the Controller.
 5. The portal includes that resolved version in subsequent CSV/PDF requests.
-6. The export path reuses the normalized query and rendering DTO; it does not scrape the browser or use a different dataset selection rule.
-7. A PDF request may include the current what-if result, including its model version and warnings.
+6. `ExportService` stores a durable `QUEUED` job through `ExportJobDao`; the portal receives `202 Accepted` and polls the job status endpoint.
+7. A bounded worker claims the job, streams rows through the DAO/Mapper XML path, writes the file atomically, and records completion metadata.
+8. The portal streams completed content from the download endpoint. The export path never scrapes the browser or uses a different dataset selection rule.
+9. A PDF request may include the current what-if result, including its model version and warnings.
 
 ### 8.3 Training and model publication
 
@@ -293,7 +309,7 @@ Every file reference is content-verified before registration. A rejected evaluat
 | Training | Registry operations through controlled functions; snapshot/run/artifact files | `catalog`, estimator history |
 | Model service | Nothing | All database schemas and artifact files |
 | Estimator service | Scoped `estimator` records | `catalog`, `ml_registry` |
-| Market service | Temporary export files only | All PostgreSQL application schemas |
+| Market service | `market_ops.export_jobs` and controlled export files | `catalog`, `ml_registry`, and estimator history |
 | Portal | Browser cookie and URL/UI state | PostgreSQL and shared artifact volumes |
 
 There is no distributed transaction manager.
@@ -313,7 +329,7 @@ The root `compose.yaml` defines:
 | `db-migrate` | One-shot | None | Migration files read-only |
 | `model-service` | Long-running | `127.0.0.1:8000` for Swagger/demo | `model_artifacts` read-only |
 | `estimator-service` | Long-running | None | None |
-| `market-service` | Long-running | None | Request-scoped temporary storage only |
+| `market-service` | Long-running | None | Persistent bounded export storage |
 | `web-portal` | Long-running | `127.0.0.1:3000` | None |
 | `training` | Explicit profile / one-shot | None | Snapshots, runs, and artifacts read/write |
 
@@ -462,7 +478,7 @@ The architecture is verified at service seams, not only through isolated unit te
 | --- | --- |
 | Training dashboard | Non-technical operators must launch, compare, approve, or schedule runs |
 | OAuth/accounts | History must follow people across devices or the system becomes shared/public |
-| Separate report service | Export work becomes independently scalable, asynchronous, or owned by another team |
+| Separate report service | Export volume requires independent scaling, security isolation, or ownership by another team |
 | Queue/workflow engine | Reports or training become durable background jobs with retries or scheduling |
 | Object storage | Services run on multiple hosts or artifacts must survive outside one Compose host |
 | PgBouncer/read replicas | Concurrent database connections or read load exceed bounded in-process pools |
@@ -484,5 +500,5 @@ These triggers prevent interview-scope simplicity from being mistaken for a perm
 | Training is a one-shot subsystem | Reproducible model production is required; a training UI or daemon is not |
 | Model files stay on a shared persistent volume | Simple single-host delivery; PostgreSQL stores lineage, paths, hashes, and metrics rather than binary objects |
 | Browser uses the portal BFF | Hides private services, centralizes cookies/correlation/error mapping, and keeps backends independently testable |
-| Market exports are synchronous and bounded | The seed dataset is small; background infrastructure has no current workload justification |
+| Market exports use durable bounded background jobs | Status, cancellation, restart recovery, and streamed downloads are required without holding an HTTP request open during generation |
 | No authentication in local scope | The PDF does not require accounts; an opaque cookie is sufficient for anonymous history isolation |

@@ -1,11 +1,13 @@
 "use client";
 
+import { Calculator } from "lucide-react";
 import { useState } from "react";
 import { PropertyFields } from "@/components/ui/property-fields";
+import { Button, Panel, Spinner } from "@/components/ui/primitives";
 import { StatusMessage } from "@/components/ui/status-message";
 import { PortalApiError } from "@/features/estimator/api";
 import { runWhatIf } from "@/features/market/api";
-import type { PropertyFieldName, WhatIfResponse } from "@/lib/api/types";
+import type { MarketOverview, PropertyFieldName, WhatIfResponse } from "@/lib/api/types";
 import { formatMoney } from "@/lib/format";
 import {
   emptyPropertyDraft,
@@ -18,9 +20,11 @@ import {
 export function WhatIfForm({
   onResult,
   disabled = false,
+  marketOverview,
 }: {
   onResult: (value: WhatIfResponse) => void;
   disabled?: boolean;
+  marketOverview: MarketOverview;
 }): React.ReactElement {
   const [draft, setDraft] = useState<PropertyDraft>(emptyPropertyDraft);
   const [errors, setErrors] = useState<PropertyErrors>({});
@@ -51,17 +55,17 @@ export function WhatIfForm({
   }
 
   return (
-    <section className="card p-5 sm:p-6" aria-labelledby="what-if-heading">
-      <p className="eyebrow">Shared model</p>
-      <h2 id="what-if-heading" className="mt-1 text-2xl font-semibold text-slate-950">What-if estimate</h2>
-      <p className="mt-1 max-w-3xl text-sm text-slate-600">Change property characteristics and estimate a value without adding a record to estimator history.</p>
-      <form onSubmit={submit} noValidate className="mt-6">
+    <Panel className="p-4" aria-labelledby="what-if-heading">
+      <h2 id="what-if-heading" className="text-xl font-extrabold text-ink">What-if estimate</h2>
+      <p className="mt-1 text-xs text-ink-muted">Adjust all seven model fields without adding a record to estimator history.</p>
+      <form onSubmit={submit} noValidate className="mt-4">
         <fieldset disabled={disabled || pending}>
           <legend className="sr-only">What-if property characteristics</legend>
           <PropertyFields
             draft={draft}
             errors={errors}
             disabled={disabled || pending}
+            compact
             onChange={(name: PropertyFieldName, value: string) => {
               setDraft((current) => ({ ...current, [name]: value }));
               setErrors((current) => ({ ...current, [name]: undefined }));
@@ -70,16 +74,17 @@ export function WhatIfForm({
             idPrefix="what-if"
           />
         </fieldset>
-        <button type="submit" className="button-primary mt-5" disabled={disabled || pending}>{pending ? "Calculating…" : "Run what-if"}</button>
+        <Button type="submit" className="mt-4 w-full" disabled={disabled || pending}>{pending ? <Spinner label="Calculating…" /> : <><Calculator className="size-4" aria-hidden="true" />Run what-if</>}</Button>
       </form>
-      {error ? <div className="mt-5"><StatusMessage tone="error" title="What-if estimate unavailable" live>{error.message}{error.correlationId ? <span className="block text-xs">Reference: {error.correlationId}</span> : null}</StatusMessage></div> : null}
+      {error ? <div className="mt-4"><StatusMessage tone="error" title="What-if estimate unavailable" live>{error.message}{error.correlationId ? <span className="block text-xs">Reference: {error.correlationId}</span> : null}</StatusMessage></div> : null}
       {result ? (
-        <div className="mt-5 rounded-xl border border-teal-200 bg-teal-50 p-5" role="status" aria-live="polite">
-          <p className="text-sm font-semibold text-teal-900">Estimated value · model {result.prediction.model_version}</p>
-          <p className="numeric mt-1 text-3xl font-bold text-teal-900">{formatMoney(result.prediction.predicted_price)}</p>
-          {result.prediction.warnings.map((warning) => <p key={warning.field} className="mt-3 text-sm font-medium text-amber-900">Advisory: {warning.field} value {warning.submitted_value}; expected range {warning.advisory_min}–{warning.advisory_max}. {warning.reason}</p>)}
+        <div className="mt-4 rounded-lg border border-red-100 bg-primary-soft p-4" role="status" aria-live="polite">
+          <p className="text-xs font-bold text-ink-muted">Estimated property value · model {result.prediction.model_version}</p>
+          <p className="numeric mt-1 text-3xl font-extrabold text-primary">{formatMoney(result.prediction.predicted_price)}</p>
+          {marketOverview.averagePrice ? <p className="mt-2 text-xs text-ink-muted">Filtered-market context: {formatMoney(Number(result.prediction.predicted_price) - Number(marketOverview.averagePrice))} versus the segment average. This is context, not confidence.</p> : null}
+          {result.prediction.warnings.map((warning) => <p key={warning.field} className="mt-3 text-xs font-semibold text-amber-900">Advisory: {warning.field} value {warning.submitted_value}; expected range {warning.advisory_minimum}–{warning.advisory_maximum}. {warning.message}</p>)}
         </div>
       ) : null}
-    </section>
+    </Panel>
   );
 }

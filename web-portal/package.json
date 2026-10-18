@@ -16,11 +16,18 @@
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test --project=chromium",
+    "test:e2e:mock": "E2E_MOCKS=1 playwright test --project=chromium",
+    "generate:market-contract": "openapi-typescript ../docs/openapi/market-service-v2.yaml -o lib/api/market-v2.generated.ts",
     "test:e2e:all": "playwright test"
   },
   "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
+    "chart.js": "^4.5.1",
+    "lucide-react": "^1.59.0",
+    "motion": "^12.23.24",
     "next": "15.5.28",
     "react": "19.0.1",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "19.0.1"
   },
   "devDependencies": {
@@ -38,6 +45,7 @@
     "@vitest/coverage-v8": "3.0.9",
     "eslint": "9.22.0",
     "eslint-config-next": "15.5.28",
+    "openapi-typescript": "^7.10.1",
     "jsdom": "26.0.0",
     "tailwindcss": "4.0.15",
     "typescript": "5.8.2",

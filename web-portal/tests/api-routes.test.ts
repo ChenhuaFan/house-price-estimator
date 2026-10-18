@@ -3,19 +3,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as health } from "@/app/api/health/route";
-import {
-  DELETE as clearHistory,
-  GET as getHistory,
-  POST as createEstimate,
-} from "@/app/api/estimator/estimates/route";
+import { DELETE as clearHistory, GET as getHistory, POST as createEstimate } from "@/app/api/estimator/estimates/route";
 import { DELETE as deleteEstimate } from "@/app/api/estimator/estimates/[estimateId]/route";
-import { GET as analysis } from "@/app/api/market/analysis/route";
+import { GET as properties } from "@/app/api/market/properties/route";
+import { POST as statistics } from "@/app/api/market/statistics/route";
 import { POST as whatIf } from "@/app/api/market/what-if/route";
-import { GET as csv } from "@/app/api/market/exports/data.csv/route";
-import { POST as pdf } from "@/app/api/market/exports/report.pdf/route";
+import { POST as createExport } from "@/app/api/market/exports/route";
+import { DELETE as cancelExport, GET as getExport } from "@/app/api/market/exports/[exportId]/route";
+import { GET as downloadExport } from "@/app/api/market/exports/[exportId]/content/route";
 
 const correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const estimateId = "11111111-1111-4111-8111-111111111111";
+const resourceId = "11111111-1111-4111-8111-111111111111";
 
 function apiRequest(path: string, init: ConstructorParameters<typeof NextRequest>[1] = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -44,18 +42,12 @@ describe("portal route handlers", () => {
     await expect(response.json()).resolves.toEqual({ status: "ok", service: "web-portal" });
   });
 
-  it("proxies history reads with bounded query names and anonymous identity", async () => {
+  it("proxies estimator reads with a bounded query and anonymous identity", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const cursor = "a".repeat(136);
-
-    const response = await getHistory(apiRequest(
-      `/api/estimator/estimates?limit=20&cursor=${cursor}&bad-key=no`,
-    ));
-
-    expect(response.status).toBe(200);
-    expect((fetchMock.mock.calls[0]?.[0] as URL).toString())
-      .toBe(`http://estimator:8000/api/v1/estimates?limit=20&cursor=${cursor}`);
+    await getHistory(apiRequest(`/api/estimator/estimates?limit=20&cursor=${cursor}&bad-key=no`));
+    expect((fetchMock.mock.calls[0]?.[0] as URL).toString()).toBe(`http://estimator:8000/api/v1/estimates?limit=20&cursor=${cursor}`);
     const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers;
     expect(headers.get("x-estimator-client-id")).toMatch(/^[0-9a-f-]{36}$/);
   });
@@ -66,92 +58,64 @@ describe("portal route handlers", () => {
   ])("rejects cross-origin estimator %s mutations", async (_name, handler) => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const response = await handler(apiRequest("/api/estimator/estimates", {
-      method: "POST",
-      headers: { origin: "https://evil.test" },
-      body: "{}",
-    }));
-
+    const response = await handler(apiRequest("/api/estimator/estimates", { method: "POST", headers: { origin: "https://evil.test" }, body: "{}" }));
     expect(response.status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("forwards same-origin estimate creation JSON", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ estimate_id: estimateId }), {
-      status: 201,
-    }));
+  it("forwards estimator create and validates delete IDs", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ estimate_id: resourceId }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
-    const response = await createEstimate(apiRequest("/api/estimator/estimates", {
-      method: "POST",
-      headers: { origin: "http://portal.test", "content-type": "application/json" },
-      body: '{"square_footage":1800}',
-    }));
-
-    expect(response.status).toBe(201);
-    expect((fetchMock.mock.calls[0]?.[0] as URL).toString())
-      .toBe("http://estimator:8000/api/v1/estimates");
-    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).body).toBe('{"square_footage":1800}');
-  });
-
-  it("validates estimate IDs before deletion and forwards valid IDs", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetchMock);
-    const source = apiRequest(`/api/estimator/estimates/${estimateId}`, {
-      method: "DELETE",
-      headers: { origin: "http://portal.test" },
-    });
-
-    const invalid = await deleteEstimate(source, { params: Promise.resolve({ estimateId: "invalid" }) });
+    const headers = { origin: "http://portal.test", "content-type": "application/json" };
+    expect((await createEstimate(apiRequest("/api/estimator/estimates", { method: "POST", headers, body: "{}" }))).status).toBe(201);
+    const invalid = await deleteEstimate(apiRequest("/api/estimator/estimates/invalid", { method: "DELETE", headers }), { params: Promise.resolve({ estimateId: "invalid" }) });
     expect(invalid.status).toBe(400);
-    const valid = await deleteEstimate(source, { params: Promise.resolve({ estimateId }) });
+    const valid = await deleteEstimate(apiRequest(`/api/estimator/estimates/${resourceId}`, { method: "DELETE", headers }), { params: Promise.resolve({ estimateId: resourceId }) });
     expect(valid.status).toBe(204);
-    expect((fetchMock.mock.calls[0]?.[0] as URL).toString())
-      .toBe(`http://estimator:8000/api/v1/estimates/${estimateId}`);
   });
 
-  it("proxies market analysis and CSV queries", async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
-      .mockResolvedValueOnce(new Response("id,price\n", {
-        status: 200,
-        headers: {
-          "content-type": "text/csv",
-          "content-disposition": "attachment; filename=data.csv",
-        },
-      }));
+  it("proxies v2 property queries without interpreting opaque cursors", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-
-    await analysis(apiRequest("/api/market/analysis?priceMin=100&page=1"));
-    const csvResponse = await csv(apiRequest("/api/market/exports/data.csv?sort=price"));
-
-    expect((fetchMock.mock.calls[0]?.[0] as URL).toString())
-      .toBe("http://market:8080/api/v1/market/analysis?priceMin=100&page=1");
-    expect((fetchMock.mock.calls[1]?.[0] as URL).toString())
-      .toBe("http://market:8080/api/v1/market/exports/data.csv?sort=price");
-    expect(csvResponse.headers.get("content-type")).toContain("text/csv");
+    await properties(apiRequest("/api/market/properties?price_gte=100000.00&cursor=opaque%2Fvalue&bad-key=no"));
+    expect((fetchMock.mock.calls[0]?.[0] as URL).toString()).toBe("http://market:8080/api/v2/market/properties?price_gte=100000.00&cursor=opaque%2Fvalue");
   });
 
-  it("proxies same-origin what-if and PDF bodies", async () => {
+  it("forwards v2 JSON mutations and the export idempotency key", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response("{}", { status: 200 }))
-      .mockResolvedValueOnce(new Response("%PDF", {
-        status: 200,
-        headers: { "content-type": "application/pdf" },
-      }));
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 202, headers: { "retry-after": "3" } }));
     vi.stubGlobal("fetch", fetchMock);
-    const mutationHeaders = { origin: "http://portal.test", "content-type": "application/json" };
+    const headers = { origin: "http://portal.test", "content-type": "application/json" };
+    await statistics(apiRequest("/api/market/statistics", { method: "POST", headers, body: "{}" }));
+    await whatIf(apiRequest("/api/market/what-if", { method: "POST", headers, body: "{}" }));
+    const accepted = await createExport(apiRequest("/api/market/exports", { method: "POST", headers: { ...headers, "idempotency-key": resourceId }, body: "{}" }));
+    expect((fetchMock.mock.calls[0]?.[0] as URL).pathname).toBe("/api/v2/market/statistics/query");
+    expect((fetchMock.mock.calls[1]?.[0] as URL).pathname).toBe("/api/v2/market/what-if");
+    expect((fetchMock.mock.calls[2]?.[0] as URL).pathname).toBe("/api/v2/market/exports");
+    const forwarded = (fetchMock.mock.calls[2]?.[1] as RequestInit).headers as Headers;
+    expect(forwarded.get("idempotency-key")).toBe(resourceId);
+    expect(accepted.headers.get("retry-after")).toBe("3");
+  });
 
-    await whatIf(apiRequest("/api/market/what-if", {
-      method: "POST", headers: mutationHeaders, body: '{"bedrooms":3}',
-    }));
-    const pdfResponse = await pdf(apiRequest("/api/market/exports/report.pdf?priceMin=100", {
-      method: "POST", headers: mutationHeaders, body: "null",
-    }));
-
-    expect((fetchMock.mock.calls[0]?.[0] as URL).toString())
-      .toBe("http://market:8080/api/v1/market/what-if");
-    expect((fetchMock.mock.calls[1]?.[0] as URL).toString())
-      .toBe("http://market:8080/api/v1/market/exports/report.pdf?priceMin=100");
-    expect(pdfResponse.headers.get("content-type")).toBe("application/pdf");
+  it("validates export IDs and preserves streaming response headers", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 202 }))
+      .mockResolvedValueOnce(new Response("csv", { status: 200, headers: {
+        "content-type": "text/csv", "content-disposition": "attachment; filename=data.csv",
+        "content-length": "3", "content-digest": "sha-256=:abc:", etag: '"abc"',
+      } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const validParams = { params: Promise.resolve({ exportId: resourceId }) };
+    expect((await getExport(apiRequest(`/api/market/exports/${resourceId}`), validParams)).status).toBe(200);
+    expect((await cancelExport(apiRequest(`/api/market/exports/${resourceId}`, { method: "DELETE", headers: { origin: "http://portal.test" } }), validParams)).status).toBe(202);
+    const content = await downloadExport(apiRequest(`/api/market/exports/${resourceId}/content`), validParams);
+    expect(content.headers.get("content-disposition")).toContain("data.csv");
+    expect(content.headers.get("content-digest")).toBe("sha-256=:abc:");
+    expect(content.headers.get("etag")).toBe('"abc"');
   });
 });

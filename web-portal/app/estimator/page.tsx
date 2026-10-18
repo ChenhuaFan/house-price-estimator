@@ -1,19 +1,18 @@
 import type { Metadata } from "next";
 import { EstimatorWorkspace } from "@/features/estimator/estimator-workspace";
-import { getInitialHistory } from "@/lib/server/backend";
+import { getEstimatorPageModel } from "@/features/estimator/server";
 
 export const metadata: Metadata = { title: "Property estimator" };
 
 export default async function EstimatorPage(): Promise<React.ReactElement> {
-  const initialHistory = await getInitialHistory();
+  const initialModel = await getEstimatorPageModel();
   return (
-    <div className="space-y-8">
-      <header className="max-w-4xl">
-        <p className="eyebrow">Property value estimator</p>
-        <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">A clear estimate, backed by one reproducible model.</h1>
-        <p className="mt-4 max-w-3xl text-lg text-slate-700">Enter seven property characteristics, retain previous results, and compare homes without losing the exact price or model version behind each estimate.</p>
+    <div className="mx-auto max-w-7xl space-y-5">
+      <header>
+        <h1 className="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">Property estimator</h1>
+        <p className="mt-1 text-sm text-ink-muted sm:text-base">Enter all seven property characteristics, save each result, and compare estimates side by side.</p>
       </header>
-      <EstimatorWorkspace initialHistory={initialHistory} />
+      <EstimatorWorkspace initialModel={initialModel} />
     </div>
   );
 }

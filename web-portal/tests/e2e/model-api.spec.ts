@@ -13,6 +13,8 @@ const property = {
   school_rating: 8,
 };
 
+test.skip(process.env.E2E_MOCKS === "1", "The mock E2E suite covers Task 2 only.");
+
 test.describe("Task 1 live model API", () => {
   test("exposes Swagger, health, OpenAPI, prediction, and version-matched model info", async ({ page, request }) => {
     await page.goto(`${modelOrigin}/docs`);

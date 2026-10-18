@@ -29,11 +29,12 @@ services:
   storage-init:
     image: busybox:1.37.0
     restart: "no"
-    command: ["sh", "-c", "chown -R 10001:10001 /data/snapshots /data/runs /data/artifacts && chmod 0750 /data/snapshots /data/runs /data/artifacts"]
+    command: ["sh", "-c", "chown -R 10001:10001 /data/snapshots /data/runs /data/artifacts /data/market-exports && chmod 0750 /data/snapshots /data/runs /data/artifacts /data/market-exports"]
     volumes:
       - training_snapshots:/data/snapshots
       - training_runs:/data/runs
       - model_artifacts:/data/artifacts
+      - market_exports:/data/market-exports
     networks: [housing-private]
 
   db-migrate:
@@ -121,9 +122,12 @@ services:
     <<: *service-security
     image: hsbc/market-service:${IMAGE_TAG:-dev}
     build:
-      context: ./market-service
+      context: .
+      dockerfile: market-service/Dockerfile
     depends_on:
       db-migrate:
+        condition: service_completed_successfully
+      storage-init:
         condition: service_completed_successfully
       model-service:
         condition: service_started
@@ -133,7 +137,11 @@ services:
       MARKET_DATABASE_PASSWORD: ${MARKET_DB_PASSWORD:?Set MARKET_DB_PASSWORD in .env}
       MODEL_SERVICE_URL: http://model-service:8000
       PORTAL_ORIGIN: ${PORTAL_PUBLIC_ORIGIN:-http://localhost:3000}
+      MARKET_CURSOR_HMAC_SECRET: ${MARKET_CURSOR_HMAC_SECRET:?Set MARKET_CURSOR_HMAC_SECRET in .env}
+      MARKET_EXPORT_ROOT: /var/lib/market-service/exports
       JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+    volumes:
+      - market_exports:/var/lib/market-service/exports
     expose: ["8080"]
     networks: [housing-private]
 
@@ -160,6 +168,7 @@ volumes:
   training_snapshots:
   training_runs:
   model_artifacts:
+  market_exports:
 
 networks:
   housing-private:
