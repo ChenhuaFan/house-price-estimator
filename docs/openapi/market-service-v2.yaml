@@ -1,0 +1,792 @@
+openapi: 3.1.0
+info:
+  title: Property Market Analysis API
+  version: 2.0.0
+  license:
+    name: Proprietary interview project
+    identifier: LicenseRef-Proprietary
+  description: |
+    Contract-first API for the Java Property Market Analysis backend.
+    All market reads are pinned to one immutable dataset version. CSV and PDF
+    exports are durable asynchronous jobs whose content is downloaded by a
+    separate streaming endpoint.
+servers:
+  - url: /
+    description: Same-origin or configured market-service base URL
+security: []
+tags:
+  - name: Properties
+    description: Filtered and sorted housing records.
+  - name: Statistics
+    description: Bounded aggregate statistics and chart groups.
+  - name: Exports
+    description: Durable CSV and PDF export jobs and content.
+  - name: WhatIf
+    description: Housing-price what-if prediction through the shared model.
+paths:
+  /api/v2/market/properties:
+    get:
+      tags: [Properties]
+      operationId: listProperties
+      summary: List filtered properties using keyset pagination
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/DatasetVersionId'
+        - $ref: '#/components/parameters/PriceGte'
+        - $ref: '#/components/parameters/PriceLte'
+        - $ref: '#/components/parameters/SquareFootageGte'
+        - $ref: '#/components/parameters/SquareFootageLte'
+        - $ref: '#/components/parameters/BedroomsGte'
+        - $ref: '#/components/parameters/BedroomsLte'
+        - $ref: '#/components/parameters/BathroomsGte'
+        - $ref: '#/components/parameters/BathroomsLte'
+        - $ref: '#/components/parameters/YearBuiltGte'
+        - $ref: '#/components/parameters/YearBuiltLte'
+        - $ref: '#/components/parameters/LotSizeGte'
+        - $ref: '#/components/parameters/LotSizeLte'
+        - $ref: '#/components/parameters/DistanceGte'
+        - $ref: '#/components/parameters/DistanceLte'
+        - $ref: '#/components/parameters/SchoolRatingGte'
+        - $ref: '#/components/parameters/SchoolRatingLte'
+        - name: sort
+          in: query
+          required: false
+          description: One public field followed by asc or desc.
+          schema:
+            type: string
+            enum:
+              - source_id:asc
+              - source_id:desc
+              - price:asc
+              - price:desc
+              - square_footage:asc
+              - square_footage:desc
+              - bedrooms:asc
+              - bedrooms:desc
+              - bathrooms:asc
+              - bathrooms:desc
+              - year_built:asc
+              - year_built:desc
+              - lot_size:asc
+              - lot_size:desc
+              - distance_to_city_center:asc
+              - distance_to_city_center:desc
+              - school_rating:asc
+              - school_rating:desc
+            default: source_id:asc
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor returned by the preceding page.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+      responses:
+        '200':
+          description: Page of properties.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyPage'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /api/v2/market/statistics/query:
+    post:
+      tags: [Statistics]
+      operationId: queryStatistics
+      summary: Calculate bounded aggregate statistics
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatisticsQuery'
+      responses:
+        '200':
+          description: Aggregate result groups.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatisticsResponse'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /api/v2/market/exports:
+    post:
+      tags: [Exports]
+      operationId: createExport
+      summary: Queue a CSV or PDF export
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportCreateRequest'
+      responses:
+        '202':
+          description: Export accepted for asynchronous processing.
+          headers:
+            Location:
+              description: Export status resource.
+              schema: {type: string}
+            Retry-After:
+              description: Suggested polling interval in seconds.
+              schema: {type: integer, minimum: 1}
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /api/v2/market/exports/{export_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExportId'
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      tags: [Exports]
+      operationId: getExport
+      summary: Read export job status and result metadata
+      responses:
+        '200':
+          description: Current export state.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      tags: [Exports]
+      operationId: cancelExport
+      summary: Cancel an export or delete completed temporary content
+      responses:
+        '202':
+          description: Cancellation accepted or already complete.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /api/v2/market/exports/{export_id}/content:
+    get:
+      tags: [Exports]
+      operationId: downloadExport
+      summary: Stream completed export content
+      parameters:
+        - $ref: '#/components/parameters/ExportId'
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Completed CSV or PDF file.
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+            Content-Length:
+              schema: {type: integer, format: int64, minimum: 0}
+            Content-Digest:
+              description: RFC 9530 SHA-256 digest of the transferred representation.
+              schema: {type: string}
+            ETag:
+              schema: {type: string}
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            text/csv:
+              schema: {type: string, format: binary}
+            application/pdf:
+              schema: {type: string, format: binary}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '410':
+          description: Export content has expired.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /api/v2/market/what-if:
+    post:
+      tags: [WhatIf]
+      operationId: calculateWhatIf
+      summary: Predict a price for one hypothetical property
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyInput'
+      responses:
+        '200':
+          description: Prediction from the shared model service.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhatIfResponse'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+components:
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema: {type: string, format: uuid}
+    ExportId:
+      name: export_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    DatasetVersionId:
+      name: dataset_version_id
+      in: query
+      required: false
+      schema: {type: string, format: uuid}
+    PriceGte:
+      name: price_gte
+      in: query
+      schema: {$ref: '#/components/schemas/Money'}
+    PriceLte:
+      name: price_lte
+      in: query
+      schema: {$ref: '#/components/schemas/Money'}
+    SquareFootageGte:
+      name: square_footage_gte
+      in: query
+      schema: {type: integer, format: int64, minimum: 1}
+    SquareFootageLte:
+      name: square_footage_lte
+      in: query
+      schema: {type: integer, format: int64, minimum: 1}
+    BedroomsGte:
+      name: bedrooms_gte
+      in: query
+      schema: {type: integer, format: int32, minimum: 0}
+    BedroomsLte:
+      name: bedrooms_lte
+      in: query
+      schema: {type: integer, format: int32, minimum: 0}
+    BathroomsGte:
+      name: bathrooms_gte
+      in: query
+      schema: {$ref: '#/components/schemas/OneDecimal'}
+    BathroomsLte:
+      name: bathrooms_lte
+      in: query
+      schema: {$ref: '#/components/schemas/OneDecimal'}
+    YearBuiltGte:
+      name: year_built_gte
+      in: query
+      schema: {type: integer, format: int32, minimum: 1, maximum: 9999}
+    YearBuiltLte:
+      name: year_built_lte
+      in: query
+      schema: {type: integer, format: int32, minimum: 1, maximum: 9999}
+    LotSizeGte:
+      name: lot_size_gte
+      in: query
+      schema: {type: integer, format: int64, minimum: 0}
+    LotSizeLte:
+      name: lot_size_lte
+      in: query
+      schema: {type: integer, format: int64, minimum: 0}
+    DistanceGte:
+      name: distance_to_city_center_gte
+      in: query
+      schema: {$ref: '#/components/schemas/ThreeDecimal'}
+    DistanceLte:
+      name: distance_to_city_center_lte
+      in: query
+      schema: {$ref: '#/components/schemas/ThreeDecimal'}
+    SchoolRatingGte:
+      name: school_rating_gte
+      in: query
+      schema: {$ref: '#/components/schemas/ThreeDecimal'}
+    SchoolRatingLte:
+      name: school_rating_lte
+      in: query
+      schema: {$ref: '#/components/schemas/ThreeDecimal'}
+
+  headers:
+    CorrelationId:
+      description: Request correlation UUID.
+      schema: {type: string, format: uuid}
+
+  responses:
+    BadRequest:
+      description: Malformed request or query syntax.
+      headers:
+        X-Correlation-ID: {$ref: '#/components/headers/CorrelationId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    NotFound:
+      description: Resource was not found.
+      headers:
+        X-Correlation-ID: {$ref: '#/components/headers/CorrelationId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    Conflict:
+      description: Request conflicts with current resource or query state.
+      headers:
+        X-Correlation-ID: {$ref: '#/components/headers/CorrelationId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    UnprocessableEntity:
+      description: Request is syntactically valid but violates business validation.
+      headers:
+        X-Correlation-ID: {$ref: '#/components/headers/CorrelationId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    TooManyRequests:
+      description: Service protection limit reached.
+      headers:
+        Retry-After:
+          schema: {type: integer, minimum: 1}
+        X-Correlation-ID: {$ref: '#/components/headers/CorrelationId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    ServiceUnavailable:
+      description: Required downstream dependency is unavailable.
+      headers:
+        X-Correlation-ID: {$ref: '#/components/headers/CorrelationId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+    InternalError:
+      description: Unexpected server error.
+      headers:
+        X-Correlation-ID: {$ref: '#/components/headers/CorrelationId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiErrorResponse'}
+
+  schemas:
+    Money:
+      type: string
+      pattern: '^(0|[1-9][0-9]{0,15})\.[0-9]{2}$'
+      example: '625000.00'
+    OneDecimal:
+      type: string
+      pattern: '^(0|[1-9][0-9]{0,10})\.[0-9]$'
+      example: '2.5'
+    ThreeDecimal:
+      type: string
+      pattern: '^(0|[1-9][0-9]{0,8})\.[0-9]{3}$'
+      example: '7.250'
+    DecimalValue:
+      type: string
+      pattern: '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$'
+      example: '482731.38'
+
+    DatasetVersion:
+      type: object
+      additionalProperties: false
+      required: [id, content_sha256]
+      properties:
+        id: {type: string, format: uuid}
+        content_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
+    IntegerRange:
+      type: object
+      additionalProperties: false
+      properties:
+        gte: {type: integer, format: int64}
+        lte: {type: integer, format: int64}
+    DecimalRange:
+      type: object
+      additionalProperties: false
+      properties:
+        gte: {$ref: '#/components/schemas/DecimalValue'}
+        lte: {$ref: '#/components/schemas/DecimalValue'}
+    MarketFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        price: {$ref: '#/components/schemas/DecimalRange'}
+        square_footage: {$ref: '#/components/schemas/IntegerRange'}
+        bedrooms: {$ref: '#/components/schemas/IntegerRange'}
+        bathrooms: {$ref: '#/components/schemas/DecimalRange'}
+        year_built: {$ref: '#/components/schemas/IntegerRange'}
+        lot_size: {$ref: '#/components/schemas/IntegerRange'}
+        distance_to_city_center: {$ref: '#/components/schemas/DecimalRange'}
+        school_rating: {$ref: '#/components/schemas/DecimalRange'}
+    MarketScope:
+      type: object
+      additionalProperties: false
+      properties:
+        dataset_version_id: {type: string, format: uuid}
+        filters: {$ref: '#/components/schemas/MarketFilters'}
+    SortField:
+      type: string
+      enum:
+        - source_id
+        - price
+        - square_footage
+        - bedrooms
+        - bathrooms
+        - year_built
+        - lot_size
+        - distance_to_city_center
+        - school_rating
+    SortDirection:
+      type: string
+      enum: [asc, desc]
+    GroupField:
+      type: string
+      enum:
+        - price
+        - square_footage
+        - bedrooms
+        - bathrooms
+        - year_built
+        - lot_size
+        - distance_to_city_center
+        - school_rating
+    SortItem:
+      type: object
+      additionalProperties: false
+      required: [field, direction]
+      properties:
+        field: {$ref: '#/components/schemas/SortField'}
+        direction: {$ref: '#/components/schemas/SortDirection'}
+    MarketSelection:
+      type: object
+      additionalProperties: false
+      required: [scope]
+      properties:
+        scope: {$ref: '#/components/schemas/MarketScope'}
+        sort:
+          type: array
+          maxItems: 1
+          items: {$ref: '#/components/schemas/SortItem'}
+
+    PropertyRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - source_id
+        - square_footage
+        - bedrooms
+        - bathrooms
+        - year_built
+        - lot_size
+        - distance_to_city_center
+        - school_rating
+        - price
+      properties:
+        source_id: {type: integer, format: int64, minimum: 1}
+        square_footage: {type: integer, format: int64, minimum: 1}
+        bedrooms: {type: integer, format: int32, minimum: 0}
+        bathrooms: {$ref: '#/components/schemas/OneDecimal'}
+        year_built: {type: integer, format: int32, minimum: 1, maximum: 9999}
+        lot_size: {type: integer, format: int64, minimum: 0}
+        distance_to_city_center: {$ref: '#/components/schemas/ThreeDecimal'}
+        school_rating: {$ref: '#/components/schemas/ThreeDecimal'}
+        price: {$ref: '#/components/schemas/Money'}
+    PageMetadata:
+      type: object
+      additionalProperties: false
+      required: [limit, has_more]
+      properties:
+        limit: {type: integer, format: int32, minimum: 1, maximum: 200}
+        has_more: {type: boolean}
+        next_cursor: {type: string}
+    PropertyPage:
+      type: object
+      additionalProperties: false
+      required: [dataset_version, query_fingerprint, items, page]
+      properties:
+        dataset_version: {$ref: '#/components/schemas/DatasetVersion'}
+        query_fingerprint: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/PropertyRecord'}
+        page: {$ref: '#/components/schemas/PageMetadata'}
+
+    MetricMethod:
+      type: string
+      enum: [COUNT, SUM, AVG, MIN, MAX, STDDEV_POP]
+    MetricField:
+      type: string
+      enum:
+        - '*'
+        - source_id
+        - price
+        - square_footage
+        - bedrooms
+        - bathrooms
+        - year_built
+        - lot_size
+        - distance_to_city_center
+        - school_rating
+    MetricRequest:
+      type: object
+      additionalProperties: false
+      required: [id, method, field]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+        method: {$ref: '#/components/schemas/MetricMethod'}
+        field: {$ref: '#/components/schemas/MetricField'}
+    FixedWidthBucket:
+      type: object
+      additionalProperties: false
+      required: [method, width]
+      properties:
+        method: {type: string, enum: [FIXED_WIDTH]}
+        width: {$ref: '#/components/schemas/DecimalValue'}
+    GroupBy:
+      type: object
+      additionalProperties: false
+      required: [field]
+      properties:
+        field: {$ref: '#/components/schemas/GroupField'}
+        bucket: {$ref: '#/components/schemas/FixedWidthBucket'}
+    GroupOrder:
+      type: object
+      additionalProperties: false
+      required: [by, direction]
+      properties:
+        by:
+          type: string
+          pattern: '^(group_key|[a-z][a-z0-9_]{0,63})$'
+        direction: {$ref: '#/components/schemas/SortDirection'}
+    StatisticsQuery:
+      type: object
+      additionalProperties: false
+      required: [scope, metrics]
+      properties:
+        scope: {$ref: '#/components/schemas/MarketScope'}
+        metrics:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: {$ref: '#/components/schemas/MetricRequest'}
+        group_by: {$ref: '#/components/schemas/GroupBy'}
+        order: {$ref: '#/components/schemas/GroupOrder'}
+        limit: {type: integer, format: int32, minimum: 1, maximum: 200, default: 100}
+    StatisticsGroup:
+      type: object
+      additionalProperties: false
+      required: [key, values]
+      properties:
+        key: {$ref: '#/components/schemas/StatisticsGroupKey'}
+        values:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: {$ref: '#/components/schemas/StatisticValue'}
+    StatisticsGroupKey:
+      type: object
+      additionalProperties: false
+      description: Empty for ungrouped statistics; otherwise identifies one exact value or bucket.
+      properties:
+        field: {$ref: '#/components/schemas/GroupField'}
+        exact_value: {$ref: '#/components/schemas/DecimalValue'}
+        gte: {$ref: '#/components/schemas/DecimalValue'}
+        lt: {$ref: '#/components/schemas/DecimalValue'}
+        label: {type: string, maxLength: 128}
+    StatisticValue:
+      type: object
+      additionalProperties: false
+      required: [metric_id]
+      properties:
+        metric_id:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+        value:
+          allOf:
+            - $ref: '#/components/schemas/DecimalValue'
+          description: Omitted when the SQL aggregate is null; COUNT is always present.
+    StatisticsResponse:
+      type: object
+      additionalProperties: false
+      required: [dataset_version, query_fingerprint, groups]
+      properties:
+        dataset_version: {$ref: '#/components/schemas/DatasetVersion'}
+        query_fingerprint: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        groups:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/StatisticsGroup'}
+
+    ExportFormat:
+      type: string
+      enum: [CSV, PDF]
+    PdfOptions:
+      type: object
+      additionalProperties: false
+      properties:
+        template: {type: string, enum: [market-analysis-v1], default: market-analysis-v1}
+        include_details: {type: boolean, default: true}
+        detail_limit: {type: integer, format: int32, minimum: 0, maximum: 5000, default: 500}
+        metrics:
+          type: array
+          maxItems: 20
+          items: {$ref: '#/components/schemas/MetricRequest'}
+        what_if: {$ref: '#/components/schemas/WhatIfResponse'}
+    ExportCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [format, selection]
+      properties:
+        format: {$ref: '#/components/schemas/ExportFormat'}
+        selection: {$ref: '#/components/schemas/MarketSelection'}
+        pdf_options: {$ref: '#/components/schemas/PdfOptions'}
+    ExportStatus:
+      type: string
+      enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED, EXPIRED]
+    ExportJob:
+      type: object
+      additionalProperties: false
+      required: [export_id, status, format, query_fingerprint, created_at, expires_at]
+      properties:
+        export_id: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/ExportStatus'}
+        format: {$ref: '#/components/schemas/ExportFormat'}
+        query_fingerprint: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        created_at: {type: string, format: date-time}
+        started_at: {type: string, format: date-time}
+        completed_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        row_count: {type: integer, format: int64, minimum: 0}
+        detail_row_count: {type: integer, format: int64, minimum: 0}
+        details_truncated: {type: boolean}
+        content_length: {type: integer, format: int64, minimum: 0}
+        content_sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        download_url: {type: string}
+        failure_code: {type: string}
+
+    PropertyInput:
+      type: object
+      additionalProperties: false
+      required:
+        - square_footage
+        - bedrooms
+        - bathrooms
+        - year_built
+        - lot_size
+        - distance_to_city_center
+        - school_rating
+      properties:
+        square_footage: {type: integer, format: int64, minimum: 1}
+        bedrooms: {type: integer, format: int32, minimum: 0}
+        bathrooms: {$ref: '#/components/schemas/OneDecimal'}
+        year_built: {type: integer, format: int32, minimum: 1, maximum: 9999}
+        lot_size: {type: integer, format: int64, minimum: 0}
+        distance_to_city_center: {$ref: '#/components/schemas/ThreeDecimal'}
+        school_rating: {$ref: '#/components/schemas/ThreeDecimal'}
+    AdvisoryWarning:
+      type: object
+      additionalProperties: false
+      required: [field, submitted_value, advisory_minimum, advisory_maximum, message]
+      properties:
+        field: {type: string}
+        submitted_value: {$ref: '#/components/schemas/DecimalValue'}
+        advisory_minimum: {$ref: '#/components/schemas/DecimalValue'}
+        advisory_maximum: {$ref: '#/components/schemas/DecimalValue'}
+        message: {type: string}
+    Prediction:
+      type: object
+      additionalProperties: false
+      required: [predicted_price, currency, model_version, warnings]
+      properties:
+        predicted_price: {$ref: '#/components/schemas/Money'}
+        currency: {type: string, enum: [USD]}
+        model_version: {type: string, minLength: 1, maxLength: 128}
+        warnings:
+          type: array
+          items: {$ref: '#/components/schemas/AdvisoryWarning'}
+    WhatIfResponse:
+      type: object
+      additionalProperties: false
+      required: [inputs, prediction]
+      properties:
+        inputs: {$ref: '#/components/schemas/PropertyInput'}
+        prediction: {$ref: '#/components/schemas/Prediction'}
+
+    FieldViolation:
+      type: object
+      additionalProperties: false
+      required: [field, message]
+      properties:
+        field: {type: string}
+        message: {type: string}
+    ApiErrorDetail:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: {type: string, pattern: '^[A-Z][A-Z0-9_]*$'}
+        message: {type: string}
+        fields:
+          type: array
+          items: {$ref: '#/components/schemas/FieldViolation'}
+    ApiErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error, correlation_id]
+      properties:
+        error: {$ref: '#/components/schemas/ApiErrorDetail'}
+        correlation_id: {type: string, format: uuid}
