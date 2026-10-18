@@ -21,7 +21,10 @@ export function FilterForm({ values }: { values: MarketFilterValues }): React.Re
   const [draft, setDraft] = useState(values);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  useEffect(() => setDraft(values), [values]);
+  useEffect(() => {
+    setDraft(values);
+    setPending(false);
+  }, [values]);
 
   function submit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();

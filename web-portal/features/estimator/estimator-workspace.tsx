@@ -24,6 +24,7 @@ export function EstimatorWorkspace({ initialHistory }: { initialHistory: History
         nextCursor={estimator.state.nextCursor}
         busy={busy}
         onToggle={estimator.toggleSelected}
+        onView={estimator.view}
         onDelete={estimator.remove}
         onClear={estimator.clear}
         onLoadMore={estimator.loadMore}

@@ -122,5 +122,12 @@ export function useEstimator(initial: HistoryPage) {
     });
   }, []);
 
-  return { state, estimate, loadMore, remove, clear, toggleSelected };
+  const view = useCallback((estimateId: string) => {
+    setState((value) => ({
+      ...value,
+      current: value.history.find((item) => item.estimate_id === estimateId) ?? value.current,
+    }));
+  }, []);
+
+  return { state, estimate, loadMore, remove, clear, toggleSelected, view };
 }

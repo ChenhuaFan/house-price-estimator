@@ -13,8 +13,10 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --coverage",
+    "test:unit": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test --project=chromium",
+    "test:e2e:all": "playwright test"
   },
   "dependencies": {
     "next": "15.2.4",
@@ -22,6 +24,7 @@
     "react-dom": "19.0.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
     "@eslint/eslintrc": "3.3.1",
     "@playwright/test": "1.51.1",
     "@tailwindcss/postcss": "4.0.15",

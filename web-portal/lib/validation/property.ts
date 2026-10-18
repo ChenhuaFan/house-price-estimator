@@ -34,6 +34,10 @@ export function validatePropertyDraft(draft: PropertyDraft): PropertyErrors {
       errors[name] = "Enter a value.";
       continue;
     }
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(trimmed)) {
+      errors[name] = "Use ordinary decimal notation.";
+      continue;
+    }
     const value = Number(trimmed);
     if (!Number.isFinite(value)) {
       errors[name] = "Enter a finite number.";

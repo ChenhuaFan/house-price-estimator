@@ -9,6 +9,7 @@ interface HistoryTableProps {
   nextCursor: string | null;
   busy: boolean;
   onToggle: (id: string) => void;
+  onView: (id: string) => void;
   onDelete: (id: string) => Promise<void>;
   onClear: () => Promise<void>;
   onLoadMore: () => Promise<void>;
@@ -57,7 +58,12 @@ export function HistoryTable(props: HistoryTableProps): React.ReactElement {
                       <td>{formatNumber(estimate.inputs.square_footage)} sq. ft. · {estimate.inputs.bedrooms} bed · {estimate.inputs.bathrooms} bath</td>
                       <td className="numeric font-semibold text-teal-800">{formatMoney(estimate.predicted_price)}</td>
                       <td>{estimate.model_version}</td>
-                      <td><button type="button" className="button-danger" disabled={props.busy} onClick={() => confirmDelete(estimate.estimate_id)}>Delete</button></td>
+                      <td>
+                        <div className="flex gap-2">
+                          <button type="button" className="button-secondary" disabled={props.busy} onClick={() => props.onView(estimate.estimate_id)}>View</button>
+                          <button type="button" className="button-danger" disabled={props.busy} onClick={() => confirmDelete(estimate.estimate_id)}>Delete</button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}

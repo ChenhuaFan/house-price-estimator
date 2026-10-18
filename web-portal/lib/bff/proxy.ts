@@ -41,10 +41,10 @@ export function errorResponse(
 
 export function requireSameOrigin(request: NextRequest): NextResponse | null {
   const publicOrigin = process.env.PORTAL_PUBLIC_ORIGIN ?? request.nextUrl.origin;
-  const expectedOrigin = new URL(publicOrigin).origin;
+  const allowedOrigins = new Set([new URL(publicOrigin).origin, request.nextUrl.origin]);
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");
-  if (origin === expectedOrigin || (!origin && fetchSite === "same-origin")) return null;
+  if ((origin && allowedOrigins.has(origin)) || fetchSite === "same-origin") return null;
   return errorResponse(403, "CSRF_REJECTED", "The request did not originate from this portal.");
 }
 
