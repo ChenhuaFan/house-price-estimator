@@ -82,6 +82,7 @@ public class MarketReadDao {
                 }));
   }
 
+  /** Checks that the active dataset catalog can be read. */
   public boolean catalogReadable() {
     return observe("interactive", "health", queryMapper::catalogReadable);
   }
@@ -108,11 +109,13 @@ public class MarketReadDao {
     return statistics(queryMapper::selectStatistics, "interactive", selection, command);
   }
 
+  /** Aggregates report statistics through the long-running export pool. */
   public StatisticsResult queryExportStatistics(
       ResolvedSelection selection, StatisticsCommand command) {
     return statistics(exportMapper::selectStatistics, "export", selection, command);
   }
 
+  /** Counts matching rows through the interactive query pool. */
   public long count(ResolvedSelection selection) {
     long count =
         observe(
@@ -121,6 +124,7 @@ public class MarketReadDao {
     return count;
   }
 
+  /** Counts matching rows through the export pool. */
   public long countExport(ResolvedSelection selection) {
     long count =
         observe("export", "count", () -> exportMapper.count(MarketSqlParameters.from(selection)));
@@ -134,6 +138,7 @@ public class MarketReadDao {
     streamWith(queryMapper::stream, "interactive", selection, maximumRows, consumer);
   }
 
+  /** Streams a bounded selection through the isolated export pool. */
   public void streamExport(
       ResolvedSelection selection, int maximumRows, Consumer<PropertyRecord> consumer) {
     streamWith(exportMapper::stream, "export", selection, maximumRows, consumer);
@@ -151,17 +156,20 @@ public class MarketReadDao {
             command.groupBy(),
             command.order(),
             command.limit());
+
     long started = System.nanoTime();
     List<StatisticsGroup> groups =
         observe(lane, "statistics", () -> statement.execute(parameters)).stream()
             .map(row -> toStatisticsGroup(row, command))
             .toList();
+
     Timer.builder("market.statistics.duration")
         .tag("lane", lane)
         .register(registry)
         .record(System.nanoTime() - started, TimeUnit.NANOSECONDS);
     registry.summary("market.statistics.groups", "lane", lane).record(groups.size());
     recordRows(lane, "statistics", groups.size());
+
     return new StatisticsResult(selection.datasetVersion(), selection.queryFingerprint(), groups);
   }
 

@@ -3,6 +3,7 @@ package com.hsbc.market.model.persistence;
 import java.time.Instant;
 import java.util.UUID;
 
+/** Database projection for a durable export job and its artifact metadata. */
 public record ExportJobRecord(
     UUID exportId,
     UUID idempotencyKey,

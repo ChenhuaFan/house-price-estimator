@@ -5,6 +5,7 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 
+/** Combines catalog-read and export-state-write probes for database readiness. */
 @Component("marketDatabaseHealthIndicator")
 public class MarketDatabaseHealthIndicator implements HealthIndicator {
   private final MarketHealthService marketHealthService;

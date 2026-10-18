@@ -30,21 +30,25 @@ public class V1CompatibilityController {
     this.correlation = correlation;
   }
 
+  /** Reports process liveness for legacy deployments. */
   @GetMapping("/health/live")
   public Map<String, String> live() {
     return Map.of("status", "ok", "service", "market-service");
   }
 
+  /** Returns the legacy dashboard analysis assembled by the compatibility service. */
   @GetMapping("/api/v1/market/analysis")
   public V1Models.MarketAnalysis analysis(@ModelAttribute V1QueryParameters parameters) {
     return compatibilityService.analysis(parameters);
   }
 
+  /** Delegates a legacy what-if request to the current prediction workflow. */
   @PostMapping("/api/v1/market/what-if")
   public V1Models.WhatIfResponse whatIf(@Valid @RequestBody V1Models.PropertyInput input) {
     return compatibilityService.whatIf(input, correlation.current());
   }
 
+  /** Streams the legacy CSV representation without buffering it in memory. */
   @GetMapping(value = "/api/v1/market/exports/data.csv", produces = "text/csv")
   public ResponseEntity<StreamingResponseBody> csv(@ModelAttribute V1QueryParameters parameters) {
     StreamingResponseBody body = output -> compatibilityService.writeCsv(parameters, output);
@@ -59,6 +63,7 @@ public class V1CompatibilityController {
         .body(body);
   }
 
+  /** Streams the legacy PDF report with an optional prediction section. */
   @PostMapping(
       value = "/api/v1/market/exports/report.pdf",
       produces = MediaType.APPLICATION_PDF_VALUE)

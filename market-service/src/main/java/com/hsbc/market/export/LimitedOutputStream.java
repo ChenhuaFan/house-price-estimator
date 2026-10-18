@@ -4,6 +4,7 @@ import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 
+/** Rejects writes that would exceed an export's configured byte limit. */
 final class LimitedOutputStream extends FilterOutputStream {
   private final long maximum;
   private long count;

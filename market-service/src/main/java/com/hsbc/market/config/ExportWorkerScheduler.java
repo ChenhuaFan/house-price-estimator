@@ -33,6 +33,7 @@ public final class ExportWorkerScheduler implements AutoCloseable {
             });
   }
 
+  /** Fills available worker slots and lets each worker drain queued jobs. */
   @Scheduled(fixedDelayString = "${market.export.poll-interval:500ms}")
   void dispatch() {
     while (availableWorkers.tryAcquire()) {
@@ -52,11 +53,13 @@ public final class ExportWorkerScheduler implements AutoCloseable {
     }
   }
 
+  /** Periodically requeues work abandoned by expired leases. */
   @Scheduled(fixedDelayString = "${market.export.recovery-interval:30s}")
   void recover() {
     worker.recoverExpiredLeases();
   }
 
+  /** Periodically expires retained jobs and removes their artifacts. */
   @Scheduled(fixedDelayString = "${market.export.cleanup-interval:10m}")
   void cleanup() {
     worker.cleanupExpired();

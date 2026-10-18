@@ -18,6 +18,7 @@ public class PropertiesApiController implements PropertiesApi {
     this.mapper = mapper;
   }
 
+  /** Resolves filters and returns one stable keyset-paginated property page. */
   @Override
   public ResponseEntity<PropertyPage> listProperties(
       UUID correlationId,
@@ -61,6 +62,7 @@ public class PropertiesApiController implements PropertiesApi {
             schoolRatingGte,
             schoolRatingLte,
             sort);
+
     return ResponseEntity.ok(mapper.toContract(marketQueryService.list(selection, limit, cursor)));
   }
 }

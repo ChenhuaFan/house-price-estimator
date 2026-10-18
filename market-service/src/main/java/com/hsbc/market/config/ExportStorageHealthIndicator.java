@@ -6,6 +6,7 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 
+/** Reports whether the configured export directory is available for writes. */
 @Component("exportStorageHealthIndicator")
 public final class ExportStorageHealthIndicator implements HealthIndicator {
   private final LocalExportStorage storage;

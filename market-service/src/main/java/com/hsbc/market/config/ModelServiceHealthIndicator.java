@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+/** Checks the downstream model service readiness endpoint. */
 @Component("modelServiceHealthIndicator")
 public final class ModelServiceHealthIndicator implements HealthIndicator {
   private final RestClient client;

@@ -5,6 +5,7 @@ import com.hsbc.market.model.domain.MarketDomain.ResolvedSelection;
 import com.hsbc.market.model.domain.MarketDomain.SortDirection;
 import com.hsbc.market.model.domain.MarketDomain.SortField;
 
+/** Carries stable sort, cursor, and limit values for page and stream queries. */
 public record PageSqlParameters(
     MarketSqlParameters scope,
     SortField sortField,
@@ -12,6 +13,7 @@ public record PageSqlParameters(
     String cursorSortValue,
     Long cursorSourceId,
     int limit) {
+  /** Builds parameters for one keyset-paginated query. */
   public static PageSqlParameters page(
       ResolvedSelection selection, CursorPosition cursor, int limit) {
     return new PageSqlParameters(
@@ -23,6 +25,7 @@ public record PageSqlParameters(
         limit);
   }
 
+  /** Builds cursor-free parameters for a bounded export stream. */
   public static PageSqlParameters stream(ResolvedSelection selection, int maximumRows) {
     return page(selection, null, maximumRows);
   }

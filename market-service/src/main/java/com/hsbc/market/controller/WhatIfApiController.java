@@ -22,9 +22,11 @@ public class WhatIfApiController implements WhatIfApi {
     this.correlation = correlation;
   }
 
+  /** Calls the isolated model workflow without creating estimator history. */
   @Override
   public ResponseEntity<WhatIfResponse> calculateWhatIf(PropertyInput input, UUID correlationId) {
     UUID effective = correlationId == null ? correlation.current() : correlationId;
+
     return ResponseEntity.ok(
         mapper.toContract(whatIfService.predict(mapper.toDomain(input), effective)));
   }

@@ -2,6 +2,7 @@ package com.hsbc.market.exception;
 
 import java.util.List;
 
+/** Carries stable error categories, codes, and field violations across service layers. */
 public final class MarketException extends RuntimeException {
   public enum Kind {
     MALFORMED,

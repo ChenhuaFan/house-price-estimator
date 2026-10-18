@@ -30,6 +30,7 @@ import org.springframework.stereotype.Component;
 /** Converts generated OpenAPI models to and from the service domain model. */
 @Component
 public final class ApiModelMapper {
+  /** Builds a normalized domain selection from property-list query parameters. */
   public MarketDomain.Selection propertySelection(
       UUID datasetVersionId,
       String priceGte,
@@ -63,8 +64,10 @@ public final class ApiModelMapper {
         MarketDomain.Sort.parse(sort));
   }
 
+  /** Converts a generated statistics request into its validated domain command. */
   public MarketDomain.StatisticsCommand toDomain(StatisticsQuery request) {
     MarketScope scope = request.getScope();
+
     return new MarketDomain.StatisticsCommand(
         scope.getDatasetVersionId(),
         filters(scope.getFilters()),
@@ -84,9 +87,11 @@ public final class ApiModelMapper {
         request.getLimit() == null ? 100 : request.getLimit());
   }
 
+  /** Converts an export request into an idempotent domain command. */
   public ExportDomain.CreateCommand toDomain(UUID idempotencyKey, ExportCreateRequest request) {
     ExportDomain.Format format = ExportDomain.Format.valueOf(request.getFormat().name());
     com.hsbc.market.contract.model.MarketSelection selection = request.getSelection();
+
     MarketDomain.Sort sort =
         selection.getSort() == null || selection.getSort().isEmpty()
             ? new MarketDomain.Sort(
@@ -96,11 +101,13 @@ public final class ApiModelMapper {
                     selection.getSort().getFirst().getField().getValue()),
                 MarketDomain.SortDirection.valueOf(
                     selection.getSort().getFirst().getDirection().name()));
+
     MarketDomain.Selection domainSelection =
         new MarketDomain.Selection(
             selection.getScope().getDatasetVersionId(),
             filters(selection.getScope().getFilters()),
             sort);
+
     ExportDomain.PdfOptions pdf = null;
     if (request.getPdfOptions() != null) {
       var options = request.getPdfOptions();
@@ -116,9 +123,11 @@ public final class ApiModelMapper {
                   : options.getMetrics().stream().map(this::metric).toList(),
               options.getWhatIf() == null ? null : toDomain(options.getWhatIf()));
     }
+
     return new ExportDomain.CreateCommand(format, domainSelection, pdf, idempotencyKey);
   }
 
+  /** Converts one generated property input into canonical domain values. */
   public MarketDomain.PropertyFeatures toDomain(PropertyInput input) {
     return new MarketDomain.PropertyFeatures(
         input.getSquareFootage(),
@@ -130,15 +139,20 @@ public final class ApiModelMapper {
         new BigDecimal(input.getSchoolRating()));
   }
 
+  /** Maps a domain page to the generated property-page response. */
   public PropertyPage toContract(MarketDomain.PropertyPage page) {
     List<com.hsbc.market.contract.model.PropertyRecord> items =
         page.items().stream().map(this::toContract).toList();
     PageMetadata metadata = new PageMetadata(page.limit(), page.hasMore());
-    if (page.nextCursor() != null) metadata.setNextCursor(page.nextCursor());
+    if (page.nextCursor() != null) {
+      metadata.setNextCursor(page.nextCursor());
+    }
+
     return new PropertyPage(
         dataset(page.datasetVersion()), page.queryFingerprint(), items, metadata);
   }
 
+  /** Maps aggregate groups and metrics to the generated statistics response. */
   public StatisticsResponse toContract(MarketDomain.StatisticsResult result) {
     List<StatisticsGroup> groups =
         result.groups().stream()
@@ -150,27 +164,41 @@ public final class ApiModelMapper {
                         com.hsbc.market.contract.model.GroupField.valueOf(
                             group.key().field().name()));
                   }
-                  if (group.key().exactValue() != null)
+
+                  if (group.key().exactValue() != null) {
                     key.setExactValue(decimal(group.key().exactValue()));
-                  if (group.key().gte() != null) key.setGte(decimal(group.key().gte()));
-                  if (group.key().lt() != null) key.setLt(decimal(group.key().lt()));
-                  if (group.key().label() != null) key.setLabel(group.key().label());
+                  }
+                  if (group.key().gte() != null) {
+                    key.setGte(decimal(group.key().gte()));
+                  }
+                  if (group.key().lt() != null) {
+                    key.setLt(decimal(group.key().lt()));
+                  }
+                  if (group.key().label() != null) {
+                    key.setLabel(group.key().label());
+                  }
+
                   List<StatisticValue> values = new ArrayList<>();
                   group
                       .values()
                       .forEach(
                           (id, value) -> {
                             StatisticValue mapped = new StatisticValue(id);
-                            if (value != null) mapped.setValue(decimal(value));
+                            if (value != null) {
+                              mapped.setValue(decimal(value));
+                            }
                             values.add(mapped);
                           });
+
                   return new StatisticsGroup(key, values);
                 })
             .toList();
+
     return new StatisticsResponse(
         dataset(result.datasetVersion()), result.queryFingerprint(), groups);
   }
 
+  /** Maps a domain prediction and its normalized inputs to the public response. */
   public WhatIfResponse toContract(MarketDomain.WhatIfResult result) {
     PropertyInput input =
         new PropertyInput(
@@ -181,6 +209,7 @@ public final class ApiModelMapper {
             result.inputs().lotSize(),
             result.inputs().distanceToCityCenter().setScale(3).toPlainString(),
             result.inputs().schoolRating().setScale(3).toPlainString());
+
     com.hsbc.market.contract.model.Prediction prediction =
         new com.hsbc.market.contract.model.Prediction(
             result.prediction().predictedPrice().setScale(2).toPlainString(),
@@ -196,27 +225,36 @@ public final class ApiModelMapper {
                             warning.advisoryMaximum(),
                             warning.message()))
                 .toList());
+
     return new WhatIfResponse(input, prediction);
   }
 
+  /** Maps durable job state and artifact metadata to the public export resource. */
   public ExportJob toContract(ExportDomain.Job job) {
     ExportJob response =
         new ExportJob(
             job.exportId(), ExportStatus.valueOf(job.status().name()),
             ExportFormat.valueOf(job.format().name()), job.queryFingerprint(),
             job.createdAt().atOffset(ZoneOffset.UTC), job.expiresAt().atOffset(ZoneOffset.UTC));
-    if (job.startedAt() != null) response.setStartedAt(job.startedAt().atOffset(ZoneOffset.UTC));
-    if (job.completedAt() != null)
+
+    if (job.startedAt() != null) {
+      response.setStartedAt(job.startedAt().atOffset(ZoneOffset.UTC));
+    }
+    if (job.completedAt() != null) {
       response.setCompletedAt(job.completedAt().atOffset(ZoneOffset.UTC));
+    }
+
     response.setRowCount(job.rowCount());
     response.setDetailRowCount(job.detailRowCount());
     response.setDetailsTruncated(job.detailsTruncated());
     response.setContentLength(job.contentLength());
     response.setContentSha256(job.contentSha256());
     response.setFailureCode(job.failureCode());
+
     if (job.status() == ExportDomain.Status.SUCCEEDED) {
       response.setDownloadUrl("/api/v2/market/exports/" + job.exportId() + "/content");
     }
+
     return response;
   }
 

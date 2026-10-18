@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
+/** Enforces cancellation and runtime limits while an artifact is being generated. */
 final class ExportGenerationSupport {
   private final ExportJobDao jobs;
   private final UUID exportId;
@@ -16,10 +17,13 @@ final class ExportGenerationSupport {
     this.deadline = Instant.now().plus(maximumRuntime);
   }
 
+  /** Fails fast when the job was cancelled or exceeded its runtime budget. */
   void check() {
     if (Instant.now().isAfter(deadline)) {
       throw new IllegalStateException("export exceeded the configured runtime limit");
     }
-    if (jobs.cancellationRequested(exportId)) throw new ExportCancelledException();
+    if (jobs.cancellationRequested(exportId)) {
+      throw new ExportCancelledException();
+    }
   }
 }

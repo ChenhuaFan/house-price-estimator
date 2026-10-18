@@ -29,6 +29,7 @@ public class LocalExportStorage {
     try {
       this.root = root.toAbsolutePath().normalize();
       this.parts = this.root.resolve(".parts");
+
       Files.createDirectories(this.parts);
       if (!Files.isWritable(this.parts)) {
         throw new IllegalStateException("export storage is not writable");
@@ -38,6 +39,7 @@ public class LocalExportStorage {
     }
   }
 
+  /** Creates a temporary part file scoped to one export job. */
   public TempFile createTemp(UUID exportId) throws IOException {
     Path path = Files.createTempFile(parts, exportId + "-", ".part");
     return new TempFile(
@@ -51,39 +53,55 @@ public class LocalExportStorage {
     Path directory = root.resolve(exportId.toString()).normalize();
     requireUnderRoot(directory);
     Files.createDirectories(directory);
+
     Path finalPath = directory.resolve("property-market-analysis." + extension).normalize();
     requireUnderRoot(finalPath);
+
     try (FileChannel channel = FileChannel.open(tempPath, StandardOpenOption.WRITE)) {
       channel.force(true);
     }
+
     try {
       Files.move(tempPath, finalPath, StandardCopyOption.ATOMIC_MOVE);
     } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
       Files.move(tempPath, finalPath);
     }
+
     return root.relativize(finalPath).toString().replace('\\', '/');
   }
 
+  /** Opens a validated artifact key for streaming. */
   public InputStream open(String contentKey) throws IOException {
     return Files.newInputStream(resolve(contentKey));
   }
 
+  /** Resolves a validated artifact key to its local path. */
   public Path path(String contentKey) {
     return resolve(contentKey);
   }
 
+  /** Deletes an artifact and its now-empty job directory when present. */
   public void delete(String contentKey) throws IOException {
-    if (contentKey == null) return;
+    if (contentKey == null) {
+      return;
+    }
+
     Path file = resolve(contentKey);
     Files.deleteIfExists(file);
+
     Path parent = file.getParent();
-    if (parent != null && !parent.equals(root)) Files.deleteIfExists(parent);
+    if (parent != null && !parent.equals(root)) {
+      Files.deleteIfExists(parent);
+    }
   }
 
+  /** Removes an unfinished part file after generation fails or is cancelled. */
   public void deleteTemp(Path path) throws IOException {
     Path normalized = path.toAbsolutePath().normalize();
-    if (!normalized.startsWith(parts))
+    if (!normalized.startsWith(parts)) {
       throw new IOException("temporary path escaped export storage");
+    }
+
     Files.deleteIfExists(normalized);
   }
 
@@ -91,13 +109,16 @@ public class LocalExportStorage {
     if (contentKey == null || contentKey.isBlank()) {
       throw new IllegalArgumentException("content key is missing");
     }
+
     Path resolved = root.resolve(contentKey).normalize();
     requireUnderRoot(resolved);
+
     return resolved;
   }
 
   private void requireUnderRoot(Path path) {
-    if (!path.startsWith(root))
+    if (!path.startsWith(root)) {
       throw new IllegalArgumentException("content key escaped export storage");
+    }
   }
 }

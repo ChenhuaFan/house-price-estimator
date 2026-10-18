@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.apache.ibatis.type.BaseTypeHandler;
 import org.apache.ibatis.type.JdbcType;
 
+/** Reads and writes PostgreSQL UUID values without string conversion. */
 public final class UuidTypeHandler extends BaseTypeHandler<UUID> {
   @Override
   public void setNonNullParameter(

@@ -19,6 +19,7 @@ public class StatisticsApiController implements StatisticsApi {
     this.mapper = mapper;
   }
 
+  /** Executes the requested aggregate query and maps it to the public contract. */
   @Override
   public ResponseEntity<StatisticsResponse> queryStatistics(
       StatisticsQuery request, UUID correlationId) {

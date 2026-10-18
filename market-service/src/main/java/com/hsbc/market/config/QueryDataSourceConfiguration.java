@@ -51,22 +51,27 @@ public class QueryDataSourceConfiguration {
     return new DataSourceTransactionManager(dataSource);
   }
 
+  /** Builds one bounded Hikari pool from shared database settings. */
   static DataSource dataSource(MarketProperties properties, int poolSize, String name) {
     HikariConfig config = new HikariConfig();
     config.setJdbcUrl(properties.database().url());
     config.setUsername(properties.database().username());
     config.setPassword(properties.database().password());
+
     config.setPoolName(name);
     config.setMaximumPoolSize(poolSize);
     config.setMinimumIdle(name.equals("market-query") ? 1 : 0);
     config.setConnectionTimeout(properties.database().connectionTimeout().toMillis());
+
     // Interactive methods declare read-only transactions, while this pool also owns the short
     // export-job state transactions required to keep status polling isolated from export streams.
     config.setReadOnly(false);
     config.setAutoCommit(true);
+
     return new HikariDataSource(config);
   }
 
+  /** Builds a MyBatis factory with strict timeouts and Mapper XML locations. */
   static SqlSessionFactory factory(
       DataSource dataSource, java.time.Duration timeout, String mapperLocation) throws Exception {
     org.apache.ibatis.session.Configuration configuration =
@@ -78,11 +83,13 @@ public class QueryDataSourceConfiguration {
     configuration.setJdbcTypeForNull(org.apache.ibatis.type.JdbcType.NULL);
     configuration.setArgNameBasedConstructorAutoMapping(true);
     configuration.getTypeHandlerRegistry().register(UUID.class, UuidTypeHandler.class);
+
     SqlSessionFactoryBean bean = new SqlSessionFactoryBean();
     bean.setDataSource(dataSource);
     bean.setConfiguration(configuration);
     bean.setTypeAliasesPackage("com.hsbc.market.model.persistence");
     bean.setMapperLocations(new PathMatchingResourcePatternResolver().getResources(mapperLocation));
+
     return bean.getObject();
   }
 }
