@@ -19,7 +19,7 @@ spring:
 
 springdoc:
   api-docs:
-    enabled: true
+    enabled: false
   swagger-ui:
     url: /openapi/market-service-v2.yaml
     path: /swagger-ui.html

@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /** Maps validation, domain, dependency, and framework failures to stable API errors. */
 @RestControllerAdvice
@@ -83,6 +84,15 @@ public final class GlobalExceptionHandler {
         HttpStatus.BAD_REQUEST,
         "MALFORMED_REQUEST",
         "Request syntax or types are invalid.",
+        List.of());
+  }
+
+  @ExceptionHandler(NoResourceFoundException.class)
+  ResponseEntity<ApiErrorResponse> missingResource(NoResourceFoundException error) {
+    return response(
+        HttpStatus.NOT_FOUND,
+        "RESOURCE_NOT_FOUND",
+        "The requested resource was not found.",
         List.of());
   }
 

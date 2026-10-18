@@ -138,12 +138,8 @@ class MarketApiIntegrationTest {
   }
 
   @Test
-  void runtimeOpenApiDocumentIsAvailable() throws Exception {
-    JsonNode document =
-        json(mvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn());
-
-    assertThat(document.path("openapi").asText()).startsWith("3.");
-    assertThat(document.path("paths").has("/api/v2/market/properties")).isTrue();
+  void generatedOpenApiDocumentIsDisabled() throws Exception {
+    mvc.perform(get("/v3/api-docs")).andExpect(status().isNotFound());
   }
 
   @Test

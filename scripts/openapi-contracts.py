@@ -13,6 +13,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_ROOT = ROOT / "contracts" / "openapi"
+MARKET_SOURCE_CONTRACT = ROOT / "docs" / "openapi" / "market-service-v2.yaml"
 HTTP_METHODS = {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
 
 
@@ -46,18 +47,48 @@ def fetch_estimator() -> dict[str, Any]:
     )
 
 
-def fetch_market() -> dict[str, Any]:
-    return fetch_from_container(
-        "market-service",
-        ["curl", "-fsS", "http://127.0.0.1:8080/v3/api-docs"],
+def fetch_published_market_contract() -> bytes:
+    completed = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "market-service",
+            "curl",
+            "-fsS",
+            "http://127.0.0.1:8080/openapi/market-service-v2.yaml",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        timeout=30,
     )
+    return completed.stdout
 
 
 CONTRACTS: dict[str, Callable[[], dict[str, Any]]] = {
     "model-service.openapi.json": fetch_public_model,
     "estimator-service.openapi.json": fetch_estimator,
-    "market-service.openapi.json": fetch_market,
 }
+
+
+def validate_market_publication() -> bool:
+    expected = MARKET_SOURCE_CONTRACT.read_bytes()
+    actual = fetch_published_market_contract()
+    if actual == expected:
+        print("Validated published market-service-v2.yaml")
+        return True
+
+    difference = difflib.unified_diff(
+        expected.decode("utf-8").splitlines(),
+        actual.decode("utf-8").splitlines(),
+        fromfile=str(MARKET_SOURCE_CONTRACT.relative_to(ROOT)),
+        tofile="runtime/openapi/market-service-v2.yaml",
+        lineterm="",
+    )
+    print("\n".join(list(difference)[:120]), file=sys.stderr)
+    return False
 
 
 def canonical(specification: dict[str, Any]) -> str:
@@ -116,7 +147,7 @@ def update() -> int:
         validate_structure(name, specification)
         (CONTRACT_ROOT / name).write_text(canonical(specification), encoding="utf-8")
         print(f"Updated {name}")
-    return 0
+    return 0 if validate_market_publication() else 1
 
 
 def validate() -> int:
@@ -142,6 +173,8 @@ def validate() -> int:
             print("\n".join(list(difference)[:120]), file=sys.stderr)
         else:
             print(f"Validated {name}")
+    if not validate_market_publication():
+        failed = True
     return 1 if failed else 0
 
 
