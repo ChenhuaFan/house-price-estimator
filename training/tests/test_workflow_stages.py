@@ -164,9 +164,7 @@ def test_training_stages_publish_and_activate_a_verified_model(
     evaluation_model = training_stage.train(config, RUN_ID)
     assert evaluating.evaluate(config, RUN_ID) is True
     artifact = publishing.publish(config, RUN_ID, "housing-linear-v1")
-    preflight_path, preflight_run = publishing.preflight_candidate(
-        config, "housing-linear-v1"
-    )
+    preflight_path, preflight_run = publishing.preflight_candidate(config, "housing-linear-v1")
     activated = publishing.activate_candidate(config, "housing-linear-v1")
 
     assert snapshot.is_file()
@@ -178,9 +176,7 @@ def test_training_stages_publish_and_activate_a_verified_model(
     metadata = read_json(config.artifact_root / "housing-linear-v1/model-metadata.json")
     assert metadata["feature_names"][0] == "square_footage"
     assert metadata["training_row_count"] == 50
-    assert read_json(config.run_root / str(RUN_ID) / "metrics.json")[
-        "acceptance_passed"
-    ] is True
+    assert read_json(config.run_root / str(RUN_ID) / "metrics.json")["acceptance_passed"] is True
 
 
 def test_export_reuses_identical_snapshot_and_rejects_changed_catalog_metadata(
@@ -233,9 +229,7 @@ def test_pending_failure_is_idempotently_reconciled_before_work_can_continue(
     if registry_row_exists:
         registry.start_run(RUN_ID, DATASET_ID, config.git_commit_sha)
     install_registry(monkeypatch, registry)
-    state = create_state(
-        config.run_root, RUN_ID, DATASET_ID, config.git_commit_sha
-    )
+    state = create_state(config.run_root, RUN_ID, DATASET_ID, config.git_commit_sha)
     state.update(
         pending_registry_operation="FAIL_RUN",
         run_status="REGISTRY_RECONCILIATION_REQUIRED",

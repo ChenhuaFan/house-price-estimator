@@ -118,9 +118,7 @@ class FakeModelGateway:
         if not self.ready_state:
             raise RuntimeError("model unavailable")
 
-    async def predict(
-        self, property_input: PropertyInput, correlation_id: UUID
-    ) -> ModelPrediction:
+    async def predict(self, property_input: PropertyInput, correlation_id: UUID) -> ModelPrediction:
         assert property_input.square_footage > 0
         assert correlation_id == CORRELATION_ID
         self.predict_calls += 1
@@ -219,25 +217,17 @@ def test_history_delete_and_clear_are_scoped_to_client() -> None:
 
 def test_validation_and_identity_errors_are_stable() -> None:
     client, _, _ = api()
-    invalid_client = headers() | {
-        "X-Estimator-Client-ID": "11111111-1111-1111-8111-111111111111"
-    }
+    invalid_client = headers() | {"X-Estimator-Client-ID": "11111111-1111-1111-8111-111111111111"}
     with client:
         missing = client.post("/api/v1/estimates", json=payload())
-        wrong_version = client.post(
-            "/api/v1/estimates", json=payload(), headers=invalid_client
-        )
+        wrong_version = client.post("/api/v1/estimates", json=payload(), headers=invalid_client)
         malformed = client.post(
             "/api/v1/estimates",
             json=payload(bathrooms=2.25),
             headers=headers(),
         )
-        invalid_cursor = client.get(
-            "/api/v1/estimates?cursor=invalid", headers=headers()
-        )
-        bad_correlation = client.get(
-            "/health/live", headers={"X-Correlation-ID": "invalid"}
-        )
+        invalid_cursor = client.get("/api/v1/estimates?cursor=invalid", headers=headers())
+        bad_correlation = client.get("/health/live", headers={"X-Correlation-ID": "invalid"})
 
     assert missing.status_code == 400
     assert missing.json()["error"]["code"] == "INVALID_CLIENT_ID"

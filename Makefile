@@ -3,7 +3,8 @@ SHELL := /bin/sh
 COMPOSE := docker compose
 DATASET_VERSION_ID ?= 00000000-0000-4000-8000-000000000001
 GIT_COMMIT_SHA ?= $(shell git rev-parse HEAD)
-export GIT_COMMIT_SHA
+IMAGE_TAG ?= $(shell git rev-parse --short=12 HEAD)
+export GIT_COMMIT_SHA IMAGE_TAG
 
 .PHONY: build db-migrate train publish bootstrap up up-lan up-debug down smoke python-test test e2e contracts-update contracts-validate verify
 
@@ -73,7 +74,7 @@ python-test:
 			-v "$(CURDIR)/$$service:/workspace" -w /workspace \
 			-v "$(CURDIR)/scripts:/quality-scripts:ro" \
 			python:3.12.10-slim-bookworm sh -c \
-			'python -m pip install -q -e ".[dev]" && ruff check . && mypy src && pytest && python /quality-scripts/check-python-coverage.py coverage.json'; \
+			'python -m pip install -q -e ".[dev]" && ruff format --check . && ruff check . && mypy src && pytest && python /quality-scripts/check-python-coverage.py coverage.json'; \
 	done
 
 test: python-test

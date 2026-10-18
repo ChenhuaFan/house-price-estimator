@@ -36,9 +36,8 @@ def train(settings: Settings, run_id: UUID) -> Path:
         )
         training_id_set = set(training_ids)
         evaluation_id_set = set(evaluation_ids)
-        if (
-            training_id_set & evaluation_id_set
-            or training_id_set | evaluation_id_set != set(source_ids)
+        if training_id_set & evaluation_id_set or training_id_set | evaluation_id_set != set(
+            source_ids
         ):
             raise AssertionError("split membership is not a disjoint complete partition")
 
@@ -70,21 +69,15 @@ def train(settings: Settings, run_id: UUID) -> Path:
         state["paths"].update(details)
         state["pending_registry_operation"] = "ADVANCE_RUN"
         save_state(settings.run_root, run_id, state)
-        revision = registry.advance_run(
-            run_id, int(run["state_revision"]), "TRAINING", details
-        )
+        revision = registry.advance_run(run_id, int(run["state_revision"]), "TRAINING", details)
         sync_state(settings.run_root, run_id, state, revision, "TRAINING")
 
-        training_rows = [
-            row for row in rows if int(row["source_id"]) in training_id_set
-        ]
+        training_rows = [row for row in rows if int(row["source_id"]) in training_id_set]
         x_train, y_train = arrays(training_rows)
         model = LinearRegression().fit(x_train, y_train)
         model_path = settings.run_root / str(run_id) / "evaluation-model.joblib"
         atomic_joblib_dump(model, model_path)
-        state["paths"]["evaluation_model_path"] = relative_path(
-            model_path, settings.run_root
-        )
+        state["paths"]["evaluation_model_path"] = relative_path(model_path, settings.run_root)
         state["hashes"]["evaluation_model_sha256"] = sha256_file(model_path)
         state["pending_registry_operation"] = "ADVANCE_RUN"
         save_state(settings.run_root, run_id, state)

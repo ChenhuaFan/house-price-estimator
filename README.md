@@ -86,6 +86,8 @@ Python 3.12, Java 21, Maven, PostgreSQL, and Flyway run in containers. They do n
 
 `make bootstrap` is idempotent with respect to model activation. On a new database it runs the complete training pipeline. If an active model already exists, it reuses that model and only brings the application stack up to date. Ordinary `make up` and service restarts never retrain or replace the model.
 
+The Make targets tag every application image with the current 12-character Git commit and pass the full commit to training metadata. Set `IMAGE_TAG` explicitly only when an intentional alternate release label is required.
+
 After the first bootstrap, use these commands for day-to-day operation:
 
 ```sh

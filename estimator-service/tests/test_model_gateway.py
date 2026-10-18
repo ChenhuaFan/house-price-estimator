@@ -58,9 +58,7 @@ async def test_predict_maps_canonical_model_response() -> None:
             },
         )
 
-    result = await gateway(httpx.MockTransport(handler)).predict(
-        property_input(), CORRELATION_ID
-    )
+    result = await gateway(httpx.MockTransport(handler)).predict(property_input(), CORRELATION_ID)
 
     assert result.predicted_price == Decimal("250000.00")
     assert result.model_version == "housing-linear-test"
@@ -88,11 +86,7 @@ async def test_predict_preserves_structured_model_rejection() -> None:
     [
         {"predictions": []},
         {"predictions": [{"predicted_price": "1", "model_version": "v", "warnings": []}]},
-        {
-            "predictions": [
-                {"predicted_price": "NaN", "model_version": "v", "warnings": []}
-            ]
-        },
+        {"predictions": [{"predicted_price": "NaN", "model_version": "v", "warnings": []}]},
     ],
 )
 async def test_predict_rejects_malformed_success_response(body: object) -> None:

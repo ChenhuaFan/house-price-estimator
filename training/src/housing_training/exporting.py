@@ -17,9 +17,7 @@ from .state import create_state, now_iso, save_state, sync_state
 
 def export_dataset(settings: Settings, dataset_version_id: UUID, run_id: UUID) -> Path:
     registry = Registry(settings.database_url)
-    state = create_state(
-        settings.run_root, run_id, dataset_version_id, settings.git_commit_sha
-    )
+    state = create_state(settings.run_root, run_id, dataset_version_id, settings.git_commit_sha)
     try:
         revision = registry.start_run(run_id, dataset_version_id, settings.git_commit_sha)
         sync_state(settings.run_root, run_id, state, revision, "EXPORTING")
@@ -70,8 +68,7 @@ def export_dataset(settings: Settings, dataset_version_id: UUID, run_id: UUID) -
                 "column_order",
             )
             incompatible = any(
-                existing_metadata.get(key) != snapshot_metadata[key]
-                for key in immutable_fields
+                existing_metadata.get(key) != snapshot_metadata[key] for key in immutable_fields
             )
             if incompatible:
                 raise ValueError(

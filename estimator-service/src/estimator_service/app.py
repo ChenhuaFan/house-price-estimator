@@ -156,9 +156,7 @@ def create_app(
         except ValueError as error:
             return _error(400, "INVALID_CLIENT_ID", str(error), request.state.correlation_id)
         try:
-            result = await service.create(
-                client_id, payload, UUID(request.state.correlation_id)
-            )
+            result = await service.create(client_id, payload, UUID(request.state.correlation_id))
         except ModelRejected as error:
             return _error(
                 error.status_code,

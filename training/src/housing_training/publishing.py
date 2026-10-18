@@ -20,9 +20,7 @@ from .settings import Settings
 from .state import load_state, save_state, sync_state
 
 
-def publish(
-    settings: Settings, run_id: UUID, model_version: str, *, promote: bool = False
-) -> Path:
+def publish(settings: Settings, run_id: UUID, model_version: str, *, promote: bool = False) -> Path:
     registry = Registry(settings.database_url)
     state = load_state(settings.run_root, run_id)
     if reconcile_pending_failure(settings, run_id, state):
@@ -61,9 +59,7 @@ def publish(
                 "metadata_path": relative_path(metadata_path, settings.artifact_root),
             }
         )
-        state["hashes"].update(
-            {"artifact_sha256": artifact_hash, "metadata_sha256": metadata_hash}
-        )
+        state["hashes"].update({"artifact_sha256": artifact_hash, "metadata_sha256": metadata_hash})
         state["pending_registry_operation"] = "REGISTER_CANDIDATE"
         save_state(settings.run_root, run_id, state)
         revision = registry.register_candidate(
@@ -146,16 +142,11 @@ def _model_metadata(
     artifact_hash: str,
     row_count: int,
 ) -> dict[str, object]:
-    snapshot_metadata = read_json(
-        settings.snapshot_root / Path(str(run["snapshot_metadata_path"]))
-    )
+    snapshot_metadata = read_json(settings.snapshot_root / Path(str(run["snapshot_metadata_path"])))
     hashes = state["hashes"]
     if not isinstance(hashes, dict):
         raise ValueError("training state hashes are invalid")
-    python_version = (
-        f"{sys.version_info.major}.{sys.version_info.minor}."
-        f"{sys.version_info.micro}"
-    )
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     return {
         "schema_version": 1,
         "model_version": model_version,

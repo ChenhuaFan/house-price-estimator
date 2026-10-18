@@ -39,9 +39,7 @@ def evaluate_predictions(
         "mae": metric(mean_absolute_error(y_evaluation, predictions)),
         "rmse": metric(math.sqrt(mean_squared_error(y_evaluation, predictions))),
         "r2": metric(r2_score(y_evaluation, predictions)),
-        "mape": metric(
-            float(np.mean(np.abs((y_evaluation - predictions) / y_evaluation)) * 100)
-        ),
+        "mape": metric(float(np.mean(np.abs((y_evaluation - predictions) / y_evaluation)) * 100)),
         "baseline_mae": metric(mean_absolute_error(y_evaluation, baseline)),
         "baseline_rmse": metric(math.sqrt(mean_squared_error(y_evaluation, baseline))),
         "baseline_mape": metric(

@@ -124,17 +124,17 @@ class EstimateRepository:
     ) -> tuple[Estimate, bool]:
         connection = await psycopg.AsyncConnection.connect(self.database_url, row_factory=dict_row)
         async with connection, connection.transaction():
-                await connection.execute(
-                    """
+            await connection.execute(
+                """
                     INSERT INTO estimator.clients (client_id)
                     VALUES (%s)
                     ON CONFLICT (client_id) DO UPDATE SET last_seen_at = clock_timestamp()
                     """,
-                    (client_id,),
-                )
-                row = await (
-                    await connection.execute(
-                        """
+                (client_id,),
+            )
+            row = await (
+                await connection.execute(
+                    """
                         INSERT INTO estimator.estimates (
                             estimate_id, client_id, request_id, square_footage, bedrooms,
                             bathrooms, year_built, lot_size, distance_to_city_center,
@@ -145,66 +145,66 @@ class EstimateRepository:
                         ON CONFLICT (client_id, request_id) DO NOTHING
                         RETURNING *
                         """,
-                        (
-                            uuid4(),
-                            client_id,
-                            request.request_id,
-                            request.square_footage,
-                            request.bedrooms,
-                            request.bathrooms,
-                            request.year_built,
-                            request.lot_size,
-                            request.distance_to_city_center,
-                            request.school_rating,
-                            predicted_price,
-                            model_version,
-                            correlation_id,
-                        ),
-                    )
-                ).fetchone()
-                inserted = row is not None
-                if row is None:
-                    row = await (
-                        await connection.execute(
-                            """
+                    (
+                        uuid4(),
+                        client_id,
+                        request.request_id,
+                        request.square_footage,
+                        request.bedrooms,
+                        request.bathrooms,
+                        request.year_built,
+                        request.lot_size,
+                        request.distance_to_city_center,
+                        request.school_rating,
+                        predicted_price,
+                        model_version,
+                        correlation_id,
+                    ),
+                )
+            ).fetchone()
+            inserted = row is not None
+            if row is None:
+                row = await (
+                    await connection.execute(
+                        """
                             SELECT * FROM estimator.estimates
                              WHERE client_id = %s AND request_id = %s
                             """,
-                            (client_id, request.request_id),
-                        )
-                    ).fetchone()
-                    if row is None:
-                        raise RuntimeError("concurrent estimate winner was not visible")
-                    if not _same_inputs(dict(row), request):
-                        raise IdempotencyConflict
-                else:
-                    for order, warning in enumerate(warnings, start=1):
-                        await connection.execute(
-                            """
+                        (client_id, request.request_id),
+                    )
+                ).fetchone()
+                if row is None:
+                    raise RuntimeError("concurrent estimate winner was not visible")
+                if not _same_inputs(dict(row), request):
+                    raise IdempotencyConflict
+            else:
+                for order, warning in enumerate(warnings, start=1):
+                    await connection.execute(
+                        """
                             INSERT INTO estimator.estimate_warnings (
                                 estimate_id, warning_order, field_name, submitted_value,
                                 advisory_min, advisory_max, reason
                             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                             """,
-                            (
-                                row["estimate_id"],
-                                order,
-                                warning.field,
-                                Decimal(warning.submitted_value),
-                                Decimal(warning.advisory_min) if warning.advisory_min else None,
-                                Decimal(warning.advisory_max) if warning.advisory_max else None,
-                                warning.reason,
-                            ),
-                        )
-                stored_warnings = await (
-                    await connection.execute(
-                        """
+                        (
+                            row["estimate_id"],
+                            order,
+                            warning.field,
+                            Decimal(warning.submitted_value),
+                            Decimal(warning.advisory_min) if warning.advisory_min else None,
+                            Decimal(warning.advisory_max) if warning.advisory_max else None,
+                            warning.reason,
+                        ),
+                    )
+            stored_warnings = await (
+                await connection.execute(
+                    """
                         SELECT * FROM estimator.estimate_warnings
                          WHERE estimate_id = %s ORDER BY warning_order
                         """,
-                        (row["estimate_id"],),
-                    )
-                ).fetchall()
+                    (row["estimate_id"],),
+                )
+            ).fetchall()
         return _estimate(dict(row), [dict(item) for item in stored_warnings]), inserted
 
     async def history(

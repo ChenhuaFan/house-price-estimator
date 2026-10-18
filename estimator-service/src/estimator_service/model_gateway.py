@@ -49,18 +49,14 @@ class HttpModelGateway:
         self._transport = transport
 
     async def ready(self, correlation_id: UUID) -> None:
-        async with httpx.AsyncClient(
-            timeout=self._timeout, transport=self._transport
-        ) as client:
+        async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
             response = await client.get(
                 f"{self._base_url}/health/ready",
                 headers={"X-Correlation-ID": str(correlation_id)},
             )
             response.raise_for_status()
 
-    async def predict(
-        self, property_input: PropertyInput, correlation_id: UUID
-    ) -> ModelPrediction:
+    async def predict(self, property_input: PropertyInput, correlation_id: UUID) -> ModelPrediction:
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout, transport=self._transport
@@ -85,9 +81,7 @@ class HttpModelGateway:
             model_version = prediction["model_version"]
             if not isinstance(model_version, str) or not model_version:
                 raise ValueError("model service returned an invalid model version")
-            warnings = [
-                AdvisoryWarning.model_validate(item) for item in prediction["warnings"]
-            ]
+            warnings = [AdvisoryWarning.model_validate(item) for item in prediction["warnings"]]
         except (KeyError, IndexError, TypeError, InvalidOperation, ValueError) as error:
             raise ModelUnavailable from error
         return ModelPrediction(price, model_version, warnings)

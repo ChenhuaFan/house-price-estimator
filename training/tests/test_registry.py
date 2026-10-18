@@ -115,9 +115,9 @@ def test_registry_executes_every_command_and_read_adapter(
             "baseline_mape": "6",
         },
     ) == (4, True)
-    assert registry.register_candidate(
-        RUN_ID, 4, "v1", "model", "a" * 64, "metadata", "b" * 64
-    ) == 5
+    assert (
+        registry.register_candidate(RUN_ID, 4, "v1", "model", "a" * 64, "metadata", "b" * 64) == 5
+    )
     registry.promote_model("v1")
     assert registry.model_version("v1") == model
     assert registry.run(RUN_ID) == run

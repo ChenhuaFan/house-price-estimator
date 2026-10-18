@@ -72,9 +72,7 @@ class ConnectionFactory:
         return self.connections.pop(0)
 
 
-def install_factory(
-    monkeypatch: pytest.MonkeyPatch, *connections: Connection
-) -> ConnectionFactory:
+def install_factory(monkeypatch: pytest.MonkeyPatch, *connections: Connection) -> ConnectionFactory:
     factory = ConnectionFactory(*connections)
     monkeypatch.setattr(
         database.psycopg,
@@ -247,9 +245,7 @@ async def test_history_supports_empty_and_cursor_paginated_pages(
         estimate_id=UUID("33333333-3333-4333-8333-333333333333"),
         created_at=datetime(2025, 12, 31, tzinfo=UTC),
     )
-    paged = Connection(
-        [Cursor(all_rows=[first, second]), Cursor(all_rows=[warning_row()])]
-    )
+    paged = Connection([Cursor(all_rows=[first, second]), Cursor(all_rows=[warning_row()])])
     install_factory(monkeypatch, empty, paged)
     repository = EstimateRepository("postgresql://unused")
 

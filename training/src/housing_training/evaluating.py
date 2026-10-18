@@ -33,9 +33,7 @@ def evaluate(settings: Settings, run_id: UUID) -> bool:
         rows = load_snapshot(snapshot)
         evaluation_ids = {int(value) for value in manifest["evaluation_source_ids"]}
         training_ids = {int(value) for value in manifest["training_source_ids"]}
-        evaluation_rows = [
-            row for row in rows if int(row["source_id"]) in evaluation_ids
-        ]
+        evaluation_rows = [row for row in rows if int(row["source_id"]) in evaluation_ids]
         training_rows = [row for row in rows if int(row["source_id"]) in training_ids]
         x_evaluation, y_evaluation = arrays(evaluation_rows)
         _, y_training = arrays(training_rows)
@@ -57,9 +55,7 @@ def evaluate(settings: Settings, run_id: UUID) -> bool:
             "training_rows": int(run["training_rows"]),
             "evaluation_rows": int(run["evaluation_rows"]),
             "random_seed": RANDOM_SEED,
-            "model_metrics": {
-                key: decision.values[key] for key in ("mae", "rmse", "r2", "mape")
-            },
+            "model_metrics": {key: decision.values[key] for key in ("mae", "rmse", "r2", "mape")},
             "baseline_metrics": {
                 "mae": decision.values["baseline_mae"],
                 "rmse": decision.values["baseline_rmse"],
@@ -100,9 +96,7 @@ def evaluate(settings: Settings, run_id: UUID) -> bool:
         raise
 
 
-def _verify_input_fingerprints(
-    run: dict[str, object], snapshot: Path, manifest_path: Path
-) -> None:
+def _verify_input_fingerprints(run: dict[str, object], snapshot: Path, manifest_path: Path) -> None:
     if sha256_file(snapshot) != str(run["snapshot_sha256"]).strip():
         raise ValueError("snapshot fingerprint changed before evaluation")
     if sha256_file(manifest_path) != str(run["split_manifest_sha256"]).strip():

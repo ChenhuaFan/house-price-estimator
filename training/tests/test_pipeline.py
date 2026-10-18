@@ -31,9 +31,7 @@ def test_pipeline_runs_each_stage_in_order(
         "export_dataset",
         lambda config, dataset_id, run_id: calls.append(("export", dataset_id, run_id)),
     )
-    monkeypatch.setattr(
-        pipeline, "train", lambda config, run_id: calls.append(("train", run_id))
-    )
+    monkeypatch.setattr(pipeline, "train", lambda config, run_id: calls.append(("train", run_id)))
     monkeypatch.setattr(
         pipeline,
         "evaluate",

@@ -31,9 +31,7 @@ def test_model_must_strictly_beat_baseline() -> None:
 
 def test_evaluation_rejects_undefined_or_non_finite_metrics() -> None:
     with pytest.raises(ValueError, match="zero target"):
-        evaluate_predictions(
-            np.asarray([0.0, 1.0]), np.asarray([0.0, 1.0]), np.asarray([1.0, 2.0])
-        )
+        evaluate_predictions(np.asarray([0.0, 1.0]), np.asarray([0.0, 1.0]), np.asarray([1.0, 2.0]))
     with pytest.raises(ValueError, match="non-finite"):
         evaluate_predictions(
             np.asarray([1.0, 2.0]),

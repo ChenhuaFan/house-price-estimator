@@ -23,9 +23,7 @@ def valid_property(**overrides: object) -> dict[str, object]:
 def test_property_vector_uses_the_contract_order() -> None:
     property_input = PropertyInput.model_validate(valid_property())
 
-    assert property_input.vector().tolist() == [
-        [1800.0, 3.0, 2.5, 2005.0, 6500.0, 4.125, 8.5]
-    ]
+    assert property_input.vector().tolist() == [[1800.0, 3.0, 2.5, 2005.0, 6500.0, 4.125, 8.5]]
 
 
 @pytest.mark.parametrize(
