@@ -47,12 +47,15 @@ describe("portal route handlers", () => {
   it("proxies history reads with bounded query names and anonymous identity", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
+    const cursor = "a".repeat(136);
 
-    const response = await getHistory(apiRequest("/api/estimator/estimates?limit=20&cursor=abc&bad-key=no"));
+    const response = await getHistory(apiRequest(
+      `/api/estimator/estimates?limit=20&cursor=${cursor}&bad-key=no`,
+    ));
 
     expect(response.status).toBe(200);
     expect((fetchMock.mock.calls[0]?.[0] as URL).toString())
-      .toBe("http://estimator:8000/api/v1/estimates?limit=20&cursor=abc");
+      .toBe(`http://estimator:8000/api/v1/estimates?limit=20&cursor=${cursor}`);
     const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Headers;
     expect(headers.get("x-estimator-client-id")).toMatch(/^[0-9a-f-]{36}$/);
   });

@@ -167,7 +167,7 @@ describe("BFF proxy security and transport contract", () => {
       new URLSearchParams([
         ["page", "1"],
         ["bad-key", "ignored"],
-        ["oversized", "x".repeat(129)],
+        ["oversized", "x".repeat(257)],
         ["page", "2"],
       ]),
       new URL("http://service.test/path"),

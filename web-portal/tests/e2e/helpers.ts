@@ -30,6 +30,43 @@ export const propertyB: PropertyValues = {
   school_rating: "9.0",
 };
 
+interface EstimateApiResult {
+  status: number;
+  body: { estimate_id?: string; [key: string]: unknown };
+}
+
+export async function createEstimateThroughPortal(
+  page: Page,
+  requestId: string,
+  values: PropertyValues = propertyA,
+): Promise<EstimateApiResult> {
+  return page.evaluate(async ({ id, input }) => {
+    const response = await fetch("/api/estimator/estimates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        request_id: id,
+        ...input,
+      }),
+    });
+    return {
+      status: response.status,
+      body: await response.json() as EstimateApiResult["body"],
+    };
+  }, {
+    id: requestId,
+    input: {
+      square_footage: Number(values.square_footage),
+      bedrooms: Number(values.bedrooms),
+      bathrooms: Number(values.bathrooms),
+      year_built: Number(values.year_built),
+      lot_size: Number(values.lot_size),
+      distance_to_city_center: Number(values.distance_to_city_center),
+      school_rating: Number(values.school_rating),
+    },
+  });
+}
+
 export async function fillProperty(
   page: Page,
   prefix: "estimate" | "what-if",

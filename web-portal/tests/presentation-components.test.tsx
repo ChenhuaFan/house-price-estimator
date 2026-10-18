@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import ErrorBoundary from "@/app/error";
 import { AppHeader } from "@/components/app-shell/app-header";
 import { PropertyFields } from "@/components/ui/property-fields";
 import { StatusMessage } from "@/components/ui/status-message";
@@ -17,12 +18,13 @@ const navigation = vi.hoisted(() => ({
   pathname: "/estimator",
   query: new URLSearchParams("priceMin=100"),
   push: vi.fn(),
+  refresh: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => navigation.pathname,
   useSearchParams: () => navigation.query,
-  useRouter: () => ({ push: navigation.push }),
+  useRouter: () => ({ push: navigation.push, refresh: navigation.refresh }),
 }));
 
 describe("shared and presentation components", () => {
@@ -30,6 +32,7 @@ describe("shared and presentation components", () => {
     navigation.pathname = "/estimator";
     navigation.query = new URLSearchParams("priceMin=100");
     navigation.push.mockReset();
+    navigation.refresh.mockReset();
   });
 
   it("renders the shared portal brand and marks the active application", () => {
@@ -68,6 +71,18 @@ describe("shared and presentation components", () => {
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
     rerender(<StatusMessage tone="error" title="Failed">Try again</StatusMessage>);
     expect(screen.getByRole("alert")).toHaveTextContent("Try again");
+  });
+
+  it("refreshes the failed route before resetting its error boundary", async () => {
+    const user = userEvent.setup();
+    const reset = vi.fn();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(<ErrorBoundary error={new Error("dependency failed")} reset={reset} />);
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(navigation.refresh).toHaveBeenCalledOnce();
+    expect(reset).toHaveBeenCalledOnce();
   });
 
   it("formats exact UI values and UTC timestamps", () => {

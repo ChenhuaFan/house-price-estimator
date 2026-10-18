@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { ApiErrorBody } from "@/lib/api/types";
 
 const MAX_JSON_BYTES = 64 * 1024;
+const MAX_QUERY_VALUE_LENGTH = 256;
 const CLIENT_COOKIE = "hsbc_estimator_client";
 
 interface ClientIdentity {
@@ -137,7 +138,9 @@ export function serviceUrl(service: "estimator" | "market", path: string): URL {
 
 export function copyAllowedQuery(source: URLSearchParams, target: URL): URL {
   for (const [key, value] of source.entries()) {
-    if (/^[A-Za-z][A-Za-z0-9]*$/.test(key) && value.length <= 128) target.searchParams.append(key, value);
+    if (/^[A-Za-z][A-Za-z0-9]*$/.test(key) && value.length <= MAX_QUERY_VALUE_LENGTH) {
+      target.searchParams.append(key, value);
+    }
   }
   return target;
 }
