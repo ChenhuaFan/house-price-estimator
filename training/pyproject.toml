@@ -40,3 +40,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 python_version = "3.12"
 strict = true
 packages = ["housing_training"]
+
+[[tool.mypy.overrides]]
+module = ["joblib", "sklearn", "sklearn.*"]
+ignore_missing_imports = true

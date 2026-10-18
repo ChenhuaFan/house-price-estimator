@@ -15,7 +15,7 @@ class Settings:
     git_commit_sha: str
 
     @classmethod
-    def from_environment(cls) -> "Settings":
+    def from_environment(cls) -> Settings:
         return cls(
             database_url=os.environ.get(
                 "TRAINING_DATABASE_URL",

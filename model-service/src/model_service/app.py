@@ -4,18 +4,19 @@ import json
 import logging
 import os
 import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
-from .domain import PredictRequest, PredictResponse, PredictionResult, price_from_raw
+from .domain import PredictionResult, PredictRequest, PredictResponse, price_from_raw
 from .runtime import LoadedModel, load_active_model
 
 LOGGER = logging.getLogger("model-service")
@@ -82,7 +83,9 @@ def create_app(container: ModelContainer | None = None, *, load_on_start: bool =
     )
 
     @app.middleware("http")
-    async def correlation_and_logging(request: Request, call_next: Any) -> Response:
+    async def correlation_and_logging(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         supplied = request.headers.get("X-Correlation-ID")
         if supplied:
             try:
@@ -120,7 +123,10 @@ def create_app(container: ModelContainer | None = None, *, load_on_start: bool =
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, error: RequestValidationError) -> JSONResponse:
         fields = [
-            {"field": ".".join(str(part) for part in item["loc"] if part != "body"), "message": item["msg"]}
+            {
+                "field": ".".join(str(part) for part in item["loc"] if part != "body"),
+                "message": item["msg"],
+            }
             for item in error.errors()
         ]
         correlation_id = getattr(request.state, "correlation_id", str(uuid4()))

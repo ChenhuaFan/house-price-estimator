@@ -6,6 +6,13 @@ from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
+
+
+def _scalar(row: tuple[Any, ...] | None, operation: str) -> Any:
+    if row is None:
+        raise RuntimeError(f"{operation} returned no result")
+    return row[0]
 
 
 @dataclass(frozen=True)
@@ -18,7 +25,7 @@ class Registry:
                 "SELECT ml_registry.start_run(%s, %s, %s)",
                 (run_id, dataset_version_id, git_commit_sha),
             )
-            return int(cursor.fetchone()[0])
+            return int(_scalar(cursor.fetchone(), "start_run"))
 
     def advance_run(
         self, run_id: UUID, revision: int, next_stage: str, details: dict[str, Any]
@@ -26,9 +33,9 @@ class Registry:
         with psycopg.connect(self.database_url) as connection, connection.cursor() as cursor:
             cursor.execute(
                 "SELECT ml_registry.advance_run(%s, %s, %s, %s::jsonb)",
-                (run_id, revision, next_stage, psycopg.types.json.Jsonb(details)),
+                (run_id, revision, next_stage, Jsonb(details)),
             )
-            return int(cursor.fetchone()[0])
+            return int(_scalar(cursor.fetchone(), "advance_run"))
 
     def fail_run(self, run_id: UUID, revision: int, summary: str) -> int:
         with psycopg.connect(self.database_url) as connection, connection.cursor() as cursor:
@@ -36,7 +43,7 @@ class Registry:
                 "SELECT ml_registry.fail_run(%s, %s, %s)",
                 (run_id, revision, summary[:1000]),
             )
-            return int(cursor.fetchone()[0])
+            return int(_scalar(cursor.fetchone(), "fail_run"))
 
     def record_evaluation(
         self,
@@ -69,6 +76,8 @@ class Registry:
                 ),
             )
             row = cursor.fetchone()
+            if row is None:
+                raise RuntimeError("record_evaluation returned no result")
             return int(row[0]), bool(row[1])
 
     def register_candidate(
@@ -98,7 +107,7 @@ class Registry:
                     metadata_sha256,
                 ),
             )
-            return int(cursor.fetchone()[0])
+            return int(_scalar(cursor.fetchone(), "register_candidate"))
 
     def promote_model(self, model_version: str) -> None:
         with psycopg.connect(self.database_url) as connection, connection.cursor() as cursor:

@@ -17,9 +17,10 @@ def sha256_file(path: Path) -> str:
 
 
 def canonical_json_bytes(value: Any) -> bytes:
-    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode(
-        "utf-8"
+    serialized = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     )
+    return f"{serialized}\n".encode()
 
 
 def atomic_write_bytes(path: Path, content: bytes) -> None:

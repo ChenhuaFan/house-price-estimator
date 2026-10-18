@@ -13,7 +13,9 @@ def main() -> int:
     parser.add_argument("--dataset-version-id", required=True, type=UUID)
     parser.add_argument("--training-run-id", type=UUID, default=uuid4())
     args = parser.parse_args()
-    path = export_dataset(Settings.from_environment(), args.dataset_version_id, args.training_run_id)
+    path = export_dataset(
+        Settings.from_environment(), args.dataset_version_id, args.training_run_id
+    )
     print(f"training_run_id={args.training_run_id}")
     print(f"snapshot={path}")
     return 0

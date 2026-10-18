@@ -9,7 +9,9 @@ from housing_training.settings import Settings
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run export, train, evaluate, publish, and promotion")
+    parser = argparse.ArgumentParser(
+        description="Run export, train, evaluate, publish, and promotion"
+    )
     parser.add_argument("--dataset-version-id", required=True, type=UUID)
     parser.add_argument("--model-version")
     args = parser.parse_args()

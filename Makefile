@@ -5,7 +5,7 @@ DATASET_VERSION_ID ?= 00000000-0000-4000-8000-000000000001
 GIT_COMMIT_SHA ?= $(shell git rev-parse HEAD)
 export GIT_COMMIT_SHA
 
-.PHONY: build db-migrate train publish bootstrap up up-lan up-debug down smoke test verify
+.PHONY: build db-migrate train publish bootstrap up up-lan up-debug down smoke python-test test verify
 
 build:
 	$(COMPOSE) build
@@ -64,7 +64,17 @@ smoke:
 	PORTAL_PUBLIC_ORIGIN="$${PORTAL_PUBLIC_ORIGIN:-http://127.0.0.1:$${WEB_PORT:-3000}}" \
 	MODEL_PUBLIC_ORIGIN="http://127.0.0.1:$${MODEL_PORT:-8000}" ./scripts/smoke.sh
 
-test:
+python-test:
+	@set -e; for service in training model-service estimator-service; do \
+		echo "Running Python quality gates for $$service"; \
+		docker run --rm \
+			-v hsbc-test-pip-cache:/root/.cache/pip \
+			-v "$(CURDIR)/$$service:/workspace" -w /workspace \
+			python:3.12.10-slim-bookworm sh -c \
+			'python -m pip install -q -e ".[dev]" && ruff check . && mypy src && pytest'; \
+	done
+
+test: python-test
 	cd web-portal && pnpm lint && pnpm typecheck && pnpm build
 	docker run --rm -v "$(CURDIR)/market-service:/workspace" -w /workspace maven:3.9.9-eclipse-temurin-21 mvn -B test
 

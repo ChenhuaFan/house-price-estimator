@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
@@ -19,7 +19,7 @@ FEATURES = (
 
 
 def _decimal(value: Any, field_name: str, scale: int, *, minimum: Decimal | None = None) -> Decimal:
-    if isinstance(value, bool) or isinstance(value, str) or value is None:
+    if isinstance(value, bool | str) or value is None:
         raise ValueError(f"{field_name} must be a JSON number")
     try:
         result = Decimal(str(value))
@@ -28,7 +28,8 @@ def _decimal(value: Any, field_name: str, scale: int, *, minimum: Decimal | None
     if not result.is_finite():
         raise ValueError(f"{field_name} must be finite")
     normalized = result.normalize()
-    effective_scale = max(0, -normalized.as_tuple().exponent)
+    exponent = cast(int, normalized.as_tuple().exponent)
+    effective_scale = max(0, -exponent)
     if effective_scale > scale:
         raise ValueError(f"{field_name} supports at most {scale} fractional decimal places")
     if minimum is not None and result < minimum:
@@ -79,7 +80,7 @@ class PropertyInput(BaseModel):
     def vector(self) -> np.ndarray[Any, Any]:
         return np.asarray([[float(getattr(self, name)) for name in FEATURES]], dtype=np.float64)
 
-    def warnings(self) -> list["AdvisoryWarning"]:
+    def warnings(self) -> list[AdvisoryWarning]:
         if Decimal("1") <= self.school_rating <= Decimal("10"):
             return []
         return [
@@ -100,7 +101,7 @@ class PredictRequest(BaseModel):
     properties: list[PropertyInput] | None = None
 
     @model_validator(mode="after")
-    def exactly_one_mode(self) -> "PredictRequest":
+    def exactly_one_mode(self) -> PredictRequest:
         if (self.property is None) == (self.properties is None):
             raise ValueError("provide exactly one of property or properties")
         if self.properties is not None and not 1 <= len(self.properties) <= 1000:

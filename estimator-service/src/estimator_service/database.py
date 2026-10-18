@@ -88,9 +88,7 @@ class EstimateRepository:
         async with connection:
             await connection.execute("SELECT 1")
 
-    async def find_by_request(
-        self, client_id: UUID, request_id: UUID
-    ) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
+    async def find_by_request(self, client_id: UUID, request_id: UUID) -> Estimate | None:
         connection = await psycopg.AsyncConnection.connect(self.database_url, row_factory=dict_row)
         async with connection:
             row = await (
@@ -113,7 +111,7 @@ class EstimateRepository:
                     (row["estimate_id"],),
                 )
             ).fetchall()
-        return dict(row), [dict(item) for item in warnings]
+        return _estimate(dict(row), [dict(item) for item in warnings])
 
     async def create(
         self,
@@ -125,8 +123,7 @@ class EstimateRepository:
         warnings: list[AdvisoryWarning],
     ) -> tuple[Estimate, bool]:
         connection = await psycopg.AsyncConnection.connect(self.database_url, row_factory=dict_row)
-        async with connection:
-            async with connection.transaction():
+        async with connection, connection.transaction():
                 await connection.execute(
                     """
                     INSERT INTO estimator.clients (client_id)
@@ -282,13 +279,3 @@ class EstimateRepository:
 
 class IdempotencyConflict(Exception):
     pass
-
-
-def same_inputs(row: dict[str, Any], request: CreateEstimateRequest) -> bool:
-    return _same_inputs(row, request)
-
-
-def estimate_from_stored(
-    row: dict[str, Any], warnings: list[dict[str, Any]]
-) -> Estimate:
-    return _estimate(row, warnings)

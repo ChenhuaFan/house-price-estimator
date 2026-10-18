@@ -9,7 +9,9 @@ from housing_training.settings import Settings
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Evaluate a training run against its held-out split")
+    parser = argparse.ArgumentParser(
+        description="Evaluate a training run against its held-out split"
+    )
     parser.add_argument("--training-run-id", required=True, type=UUID)
     args = parser.parse_args()
     passed = evaluate(Settings.from_environment(), args.training_run_id)

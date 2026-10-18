@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
@@ -19,7 +19,7 @@ FEATURES = (
 
 
 def _decimal(value: Any, field_name: str, scale: int, minimum: Decimal | None = None) -> Decimal:
-    if isinstance(value, bool) or isinstance(value, str) or value is None:
+    if isinstance(value, bool | str) or value is None:
         raise ValueError(f"{field_name} must be a JSON number")
     try:
         result = Decimal(str(value))
@@ -27,7 +27,8 @@ def _decimal(value: Any, field_name: str, scale: int, minimum: Decimal | None = 
         raise ValueError(f"{field_name} must be a finite decimal number") from None
     if not result.is_finite():
         raise ValueError(f"{field_name} must be finite")
-    if max(0, -result.normalize().as_tuple().exponent) > scale:
+    exponent = cast(int, result.normalize().as_tuple().exponent)
+    if max(0, -exponent) > scale:
         raise ValueError(f"{field_name} supports at most {scale} fractional decimal places")
     if minimum is not None and result < minimum:
         raise ValueError(f"{field_name} must be at least {minimum}")
