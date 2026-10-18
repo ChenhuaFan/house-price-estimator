@@ -6,6 +6,15 @@ The product must let users estimate individual property values and explore housi
 
 [`Interview Tasks Fullstack.pdf`](../requirements/Interview%20Tasks%20Fullstack.pdf) is authoritative for the interview task's source requirements. An [English Markdown transcription](../requirements/Interview%20Tasks%20Fullstack.md) is available for convenience. Requirements explicitly described as project decisions or data assumptions supplement the PDF and must not be presented as PDF-mandated scope.
 
+Requirement provenance is expressed on each requirement or for an explicitly stated requirement range using the following categories:
+
+- **PDF:** directly required by the source PDF;
+- **Mixed:** contains a PDF-required capability plus project-defined acceptance or contract details;
+- **Project decision:** added to make the implementation precise, reproducible, secure, or demonstrable, but not required by the PDF;
+- **Data assumption:** inferred from the supplied CSV files because the PDF does not define the relevant domain convention.
+
+When a project decision or data assumption conflicts with a PDF requirement, the PDF requirement takes precedence.
+
 ## Product scope
 
 The product consists of:
@@ -20,13 +29,13 @@ Both applications must use the same housing price prediction capability.
 
 ## Shared portal requirements
 
-- **REQ-PORTAL-001:** Users must be able to move between the Property Value Estimator and Property Market Analysis applications through shared navigation.
-- **REQ-PORTAL-002:** The portal must show clear loading feedback while data or results are pending.
-- **REQ-PORTAL-003:** The portal must show useful error messages when data cannot be loaded or an operation fails.
+- **REQ-PORTAL-001 [PDF]:** Users must be able to move between the Property Value Estimator and Property Market Analysis applications through shared navigation.
+- **REQ-PORTAL-002 [PDF]:** The portal must show clear loading feedback while data or results are pending.
+- **REQ-PORTAL-003 [PDF]:** The portal must show useful error messages when data cannot be loaded or an operation fails.
 
 ## Housing price prediction requirements
 
-- **REQ-PRED-001:** Every prediction record must provide all seven model input fields:
+- **REQ-PRED-001 [Mixed]:** Every prediction record must provide all seven model input fields. Requiring all model fields is from the PDF; the canonical names below come from the supplied datasets:
   - `square_footage`
   - `bedrooms`
   - `bathrooms`
@@ -34,18 +43,18 @@ Both applications must use the same housing price prediction capability.
   - `lot_size`
   - `distance_to_city_center`
   - `school_rating`
-- **REQ-PRED-002:** A valid single-property request whose raw model output satisfies `REQ-PRED-009` must return exactly one predicted price. The response must identify the currency as USD and represent the amount as a fixed two-decimal decimal value.
-- **REQ-PRED-003:** A batch request must contain between 1 and 1,000 property records using the same seven-field schema. A successful response must contain exactly one prediction for each input record and preserve input order; the atomic model-output failure rule in `REQ-PRED-009` applies to the batch as a whole.
-- **REQ-PRED-004:** Model information must be available and must include the model version, feature names in canonical order, one coefficient per feature, the intercept, and the version-matched evaluation metrics defined in `REQ-TRAIN-005`.
-- **REQ-PRED-005:** Service health status must be available.
-- **REQ-PRED-006:** The service interface must expose `predict`, `model-info`, and `health` operations.
-- **REQ-PRED-007:** Invalid prediction requests must be rejected without returning a prediction and must identify the invalid field or batch condition.
-- **REQ-PRED-008:** A type-valid request that violates an advisory domain range must still return a prediction. The response must also return a non-blocking warning that identifies the field, submitted value, advisory range, and reason for the warning.
-- **REQ-PRED-009:** A raw model output that is non-finite, negative, or cannot be represented as `numeric(18,2)` after required rounding must produce a structured `MODEL_OUTPUT_OUT_OF_DOMAIN` error and no prediction or history row. A batch containing such an output must fail atomically and identify the input index; partial batch results are not returned.
+- **REQ-PRED-002 [Mixed]:** A valid single-property request whose raw model output satisfies `REQ-PRED-009` must return exactly one predicted price. Single prediction is required by the PDF; USD and fixed two-decimal representation are project data-contract decisions.
+- **REQ-PRED-003 [Mixed]:** A batch request must contain between 1 and 1,000 property records using the same seven-field schema. A successful response must contain exactly one prediction for each input record and preserve input order; the atomic model-output failure rule in `REQ-PRED-009` applies to the batch as a whole. Batch prediction is required by the PDF; the limit, ordering, and atomicity rules are project decisions.
+- **REQ-PRED-004 [Mixed]:** Model information must be available and must include the model version, feature names in canonical order, one coefficient per feature, the intercept, and the version-matched evaluation metrics defined in `REQ-TRAIN-005`. Coefficients and performance metrics are required by the PDF; the remaining response details are project decisions.
+- **REQ-PRED-005 [PDF]:** Service health status must be available.
+- **REQ-PRED-006 [Mixed]:** The service interface must expose `predict`, `model-info`, and `health` operations. The operation names come from the PDF; the project maps them to `POST /api/v1/predict`, `GET /api/v1/model-info`, and `GET /health`. Additional liveness and readiness routes supplement rather than replace `GET /health`.
+- **REQ-PRED-007 [Project decision]:** Invalid prediction requests must be rejected without returning a prediction and must identify the invalid field or batch condition.
+- **REQ-PRED-008 [Project decision]:** A type-valid request that violates an advisory domain range must still return a prediction. The response must also return a non-blocking warning that identifies the field, submitted value, advisory range, and reason for the warning.
+- **REQ-PRED-009 [Project decision]:** A raw model output that is non-finite, negative, or cannot be represented as `numeric(18,2)` after required rounding must produce a structured `MODEL_OUTPUT_OUT_OF_DOMAIN` error and no prediction or history row. A batch containing such an output must fail atomically and identify the input index; partial batch results are not returned.
 
 ## Model training, evaluation, and testing requirements
 
-The PDF requires a trained regression model and performance metrics but does not prescribe the training workflow below. This section is a project decision that makes the model, dataset lineage, and evaluation reproducible without adding a training dashboard.
+The PDF requires a trained regression model and performance metrics but does not prescribe the training workflow below. Every `REQ-TRAIN-*` requirement in this section is a **Project decision** that makes the model, dataset lineage, and evaluation reproducible without adding a training dashboard.
 
 - **REQ-TRAIN-001:** The repository must contain a self-contained top-level `training/` workspace. It may connect directly to PostgreSQL but must not depend on starting either application backend or the portal.
 - **REQ-TRAIN-002:** The training workspace must provide independent command-line scripts at `training/scripts/export_dataset.py`, `training/scripts/train.py`, `training/scripts/evaluate.py`, and `training/scripts/publish.py`. The scripts must be independently executable and suitable for automation.
@@ -55,14 +64,14 @@ The PDF requires a trained regression model and performance metrics but does not
   - mean absolute error (MAE), expressed in USD;
   - root mean squared error (RMSE), expressed in USD;
   - coefficient of determination (R²);
-  - mean absolute percentage error (MAPE), expressed as a percentage.
+  - mean absolute percentage error (MAPE), expressed in percentage points as `100 * mean(abs((actual - predicted) / actual))`.
 
   The evaluation output must include each metric value together with the central dataset version, exported snapshot fingerprint, total, training, and evaluation row counts, and random seed. MAE, RMSE, and MAPE must be displayed to two decimal places. R² must retain at least four decimal places so that model quality is not hidden by display rounding.
 - **REQ-TRAIN-006:** Evaluation must run a mean-target baseline using the same training and evaluation partitions. A model is eligible for publication only when it outperforms that baseline on MAE, RMSE, and MAPE and its held-out evaluation results satisfy all of these acceptance thresholds:
   - MAE no greater than USD 15,000.00;
   - RMSE no greater than USD 20,000.00;
   - R² no lower than 0.9000;
-  - MAPE no greater than 7.50%.
+  - MAPE no greater than 7.50 percentage points.
 - **REQ-TRAIN-007:** After evaluation passes, the production model artifact must be fitted on all valid labelled rows in the exported immutable snapshot.
 - **REQ-TRAIN-008:** A completed evaluation must publish version-matched `split-manifest.json` and `metrics.json` files under `training/runs/<training-run-id>/`. An accepted run must additionally publish these model artifacts under `training/artifacts/<model-version>/` for use by other programs:
   - `model.joblib`, the serialized model;
@@ -74,7 +83,7 @@ The PDF requires a trained regression model and performance metrics but does not
 
 ## Data contract and domain assumptions
 
-The source PDF does not define units or currency. The following conventions are project assumptions inferred from the supplied data and must be used consistently unless authoritative requirements replace them.
+The source PDF does not define units, currency, record roles, or validation ranges. None of the `REQ-DATA-*` requirements is PDF-mandated: `REQ-DATA-001` through `REQ-DATA-003`, `REQ-DATA-006`, and `REQ-DATA-007` contain **Data assumptions** inferred from the supplied files, while `REQ-DATA-004` and `REQ-DATA-005` are **Project decisions** defining safe and consistent validation. Database-loading details within this section are also project decisions.
 
 - **REQ-DATA-001:** `House Price Dataset.csv` is the labelled seed source for the versioned central housing dataset used by training and market analysis. Database initialization SQL must preload its 50 rows as the initial immutable dataset version. Its `id` column is a source-record identifier, its `price` column is the training target, and the remaining seven columns are model inputs. Neither `id` nor `price` is a prediction-request field.
 - **REQ-DATA-002:** `Test Data For Prediction.csv` is an unlabelled Web/API demonstration fixture containing exactly the seven model inputs. It must not be preloaded into the central dataset, used as training or evaluation data, or treated as actual-price market data. When its rows are submitted through the estimator, successful predictions follow the same history-persistence rules as other user inputs.
@@ -86,12 +95,14 @@ The source PDF does not define units or currency. The following conventions are 
   - `lot_size`: lot area in square feet (sq. ft.);
   - `distance_to_city_center`: distance in miles;
   - `school_rating`: rating on a 1-to-10 scale.
-- **REQ-DATA-004:** Every model input must be present, finite, and compatible with the canonical data type and hard lower-bound rules defined in `constraints.md`. Type errors, non-finite values, and hard-range violations must prevent prediction.
+- **REQ-DATA-004:** Every model input must be present, finite, and compatible with the canonical data type, scale, and hard lower-bound rules defined in `constraints.md`. A decimal model input must be exactly representable at its canonical scale without rounding; trailing zeroes do not increase its effective scale. Type errors, non-finite values, excess fractional precision, and hard-range violations must prevent prediction.
 - **REQ-DATA-005:** Observed minimum and maximum values in the supplied datasets are descriptive data, not validation or warning limits. A prediction must not be rejected or warned only because an input falls outside the range observed during training.
 - **REQ-DATA-006:** `price`, predicted prices, price aggregates, and price-derived exports must use USD. User-visible and exported monetary amounts must contain exactly two decimal places.
 - **REQ-DATA-007:** `school_rating` has an advisory domain range of 1 through 10 inclusive. A finite numeric value outside this range must trigger the warning required by `REQ-PRED-008` rather than being rejected solely for exceeding the advisory range.
 
 ## Property Value Estimator requirements
+
+`REQ-EST-001` through `REQ-EST-005` and `REQ-EST-007` are **PDF** requirements. `REQ-EST-006` is **Mixed**: showing previous estimates is required by the PDF, while durability across reloads, browser sessions, and service restarts is a project decision. `REQ-EST-008` through `REQ-EST-011` are **Project decisions** defining durable history behavior and warning retention.
 
 - **REQ-EST-001:** Users must be able to enter all property fields used by the prediction model.
 - **REQ-EST-002:** The application must validate property details before submission and display appropriate validation messages.
@@ -107,6 +118,8 @@ The source PDF does not define units or currency. The following conventions are 
 
 ## Property Market Analysis requirements
 
+`REQ-MARKET-001`, `REQ-MARKET-002`, and `REQ-MARKET-004` through `REQ-MARKET-008` are **PDF** requirements. `REQ-MARKET-003` is **Mixed**: segment filtering is required by the PDF, while the complete list of filterable fields is a project decision. `REQ-MARKET-009` through `REQ-MARKET-011` are **Project decisions** that make filtering behavior deterministic.
+
 - **REQ-MARKET-001:** Users must be able to explore the supplied housing dataset through an interactive dashboard.
 - **REQ-MARKET-002:** The dashboard must include property market visualisations.
 - **REQ-MARKET-003:** Users must be able to define a property segment by filtering on actual price, square footage, bedroom count, bathroom count, year built, lot size, distance to the city centre, and school rating.
@@ -120,6 +133,8 @@ The source PDF does not define units or currency. The following conventions are 
 - **REQ-MARKET-011:** Users must be able to reset all market filters to the default view.
 
 ## Market analysis export requirements
+
+The PDF requires CSV and PDF export options. Every `REQ-EXPORT-*` requirement below is a **Project decision** defining the content and consistency of those required exports.
 
 - **REQ-EXPORT-001:** A CSV export must contain the currently filtered records in the table's current sort order.
 - **REQ-EXPORT-002:** The CSV must include a header row followed by `id`, the seven canonical model input fields, and `price`. Price values must use fixed two-decimal USD formatting.

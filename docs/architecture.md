@@ -152,7 +152,7 @@ The model service is the Task 1 deliverable and the single inference authority.
 - It resolves model and metadata paths beneath `MODEL_ARTIFACT_ROOT`, verifies their SHA-256 fingerprints, validates the feature contract, and loads the model into memory.
 - `/predict` supports one property or an ordered batch of up to 1,000 properties.
 - `/model-info` returns the loaded model version, canonical feature order, coefficients, intercept, dataset lineage, and database-backed metrics.
-- Liveness means the process is running. Readiness means a verified active model is loaded.
+- The PDF requires a simple `health` operation. The project maps that operation to `GET /health`, which returns a small `200 OK` service-status response whenever the process is live. `/health/live` exposes the same project-defined liveness meaning for container tooling; `/health/ready` returns success only when a verified active model is loaded.
 - A non-finite, negative, or unrepresentable model output returns `MODEL_OUTPUT_OUT_OF_DOMAIN`; it is never clamped or persisted.
 
 The service loads one active model per process lifetime. Model activation is an explicit maintenance operation followed by a controlled model-service recreate; normal requests never trigger training or artifact reload.
@@ -163,9 +163,10 @@ The estimator service owns the Property Value Estimator use case.
 
 - It validates the canonical seven fields and advisory rules.
 - It derives history ownership exclusively from the opaque first-party cookie; a body or URL value cannot select another history owner.
-- It calls `model-service` before opening the estimate-write transaction.
+- It performs an idempotency lookup before inference. A matching `(client_id, request_id)` and identical canonical inputs returns the original persisted estimate; reuse with different inputs returns `409 IDEMPOTENCY_KEY_REUSED`.
+- For a new key, it calls `model-service` before opening the estimate-write transaction.
 - A successful model response is stored with the exact returned model version and warnings in one PostgreSQL transaction.
-- `UNIQUE (client_id, request_id)` makes retries idempotent.
+- `UNIQUE (client_id, request_id)` prevents duplicate rows. If concurrent requests race after the initial lookup, the uniqueness loser loads the committed winner and applies the same input comparison, returning the winner for identical inputs or `409` for different inputs.
 - History reads use bounded cursor pagination; deletion is scoped by cookie-derived `client_id`.
 - Comparison is a read concern over selected estimate records and requires no separate persisted comparison entity.
 
@@ -204,7 +205,7 @@ All service contracts use `/api/v1` and OpenAPI 3.1. Health endpoints may remain
 
 | Surface | Representative operations | Caller |
 | --- | --- | --- |
-| `model-service` | `POST /api/v1/predict`, `GET /api/v1/model-info`, `GET /health/live`, `GET /health/ready` | Swagger client, estimator, market |
+| `model-service` | PDF-required prediction, model-info, and health operations mapped by the project to `POST /api/v1/predict`, `GET /api/v1/model-info`, and `GET /health`, plus project-defined `GET /health/live` and `GET /health/ready` | Swagger client, estimator, market |
 | `estimator-service` | `POST /api/v1/estimates`, `GET /api/v1/estimates`, `DELETE /api/v1/estimates/{id}`, `DELETE /api/v1/estimates` | Portal BFF only |
 | `market-service` | `GET /api/v1/market/analysis`, `POST /api/v1/market/what-if`, `GET /api/v1/market/exports/data.csv`, `POST /api/v1/market/exports/report.pdf` | Portal BFF only |
 | `web-portal` | `/estimator`, `/market`, browser-facing `/api/estimator/*` and `/api/market/*` route handlers | Browser |
@@ -226,16 +227,32 @@ sequenceDiagram
     B->>W: POST estimate + idempotency key
     W->>E: Forward body, cookie, correlation ID
     E->>E: Validate input and advisory ranges
-    E->>M: POST /api/v1/predict
-    M->>M: Infer and validate output domain
-    M-->>E: Price, model version, warnings
-    E->>D: Insert client/estimate/warnings transaction
-    D-->>E: Commit
-    E-->>W: Persisted estimate DTO
-    W-->>B: Table/chart result and Set-Cookie if new
+    E->>D: Lookup client_id + request_id
+    alt Existing key and identical canonical inputs
+        D-->>E: Original persisted estimate
+        E-->>W: Original estimate DTO, no model call
+    else Existing key with different canonical inputs
+        D-->>E: Original canonical inputs
+        E-->>W: 409 IDEMPOTENCY_KEY_REUSED
+    else New key
+        D-->>E: Not found
+        E->>M: POST /api/v1/predict
+        M->>M: Infer and validate output domain
+        M-->>E: Price, model version, warnings
+        E->>D: Insert client/estimate/warnings transaction
+        alt Insert wins
+            D-->>E: Commit
+            E-->>W: Persisted estimate DTO
+        else Concurrent unique conflict
+            E->>D: Load committed winner
+            D-->>E: Winner and canonical inputs
+            E-->>W: Winner DTO or 409 after input comparison
+        end
+    end
+    W-->>B: Result/error and persistent Set-Cookie if new
 ```
 
-The database transaction begins only after inference succeeds, avoiding a distributed transaction across the estimator and model services.
+The idempotency lookup is read-only. For a genuinely new key, the estimate-write transaction begins only after inference succeeds, avoiding a distributed transaction across the estimator and model services. A retry after a committed response loss returns the original row even if the active model has since changed.
 
 ### 8.2 Market analysis and exports
 
@@ -395,13 +412,13 @@ Only `market-service` uses an application cache.
 - Cached values: immutable analysis DTOs or aggregate/chart projections.
 - Never cached as authority: estimate history, model lifecycle writes, money mutations, or generated export files.
 
-Dataset and model versions are part of keys, so activation creates new cache entries instead of requiring unsafe global mutation. Size limits prevent arbitrary filter combinations from growing memory without bound.
+Dataset and model versions are part of keys, so activation logically invalidates prior entries by making them unreachable from requests for the new version. Old entries expire through the five-minute TTL or bounded-size eviction instead of requiring unsafe global mutation. Size limits prevent arbitrary filter combinations from growing memory without bound.
 
 ## 14. Security Model
 
 The local interview build has no OAuth, login, user profile, or RBAC feature.
 
-- Anonymous history isolation uses a random first-party `HttpOnly`, `SameSite=Lax` client cookie.
+- Anonymous history isolation uses the persistent first-party `hsbc_estimator_client` cookie with a random UUIDv4 value, `HttpOnly`, `SameSite=Lax`, `Path=/`, a one-year `Max-Age` and matching `Expires`, and `Secure` whenever the public origin uses HTTPS.
 - The cookie contains only an opaque identifier and is never accepted from a JSON owner field.
 - Portal-origin and CSRF controls protect cookie-based mutations.
 - Ports bind to loopback by default. The explicit LAN override may publish the portal and model Swagger, and the separate debug override may publish estimator Swagger, only on a trusted network. Internal service calls continue to use the Compose network.
@@ -414,7 +431,7 @@ Authentication and public internet hardening require a separate architecture dec
 
 ## 15. Observability
 
-Every inbound request accepts or creates an `X-Correlation-ID`. The value is returned to the caller and propagated across portal, estimator/market, and model calls.
+Every inbound request accepts or creates an `X-Correlation-ID`. A supplied value must be a valid UUID; it is normalized to lowercase hyphenated form, while a missing value is replaced with a generated UUIDv4. Invalid values return `400 INVALID_CORRELATION_ID` before business processing. The UUID is returned to the caller and propagated across portal, estimator/market, and model calls.
 
 Structured logs include service, operation, correlation ID, status, latency, downstream status, resolved dataset version, and model version where applicable. They exclude secrets, cookies, full input rows, and stack traces in client responses.
 
@@ -433,6 +450,7 @@ No external metrics, trace, or log platform is required.
 The architecture is verified at service seams, not only through isolated unit tests.
 
 - OpenAPI provider and consumer contract tests cover portal-to-backend and backend-to-model calls.
+- The model-service contract and smoke tests verify that the PDF-required health capability remains available through the project-defined `GET /health` mapping and returns simple liveness independently of the stricter `/health/ready` result.
 - PostgreSQL container tests cover migrations, grants, schema constraints, run transitions, history isolation, and cursor ordering.
 - Artifact tests cover canonical hashes, path containment, registry/file agreement, and model loading.
 - End-to-end tests cover estimate creation/history, market filtering/statistics, what-if analysis, CSV/PDF downloads, and downstream failure states.

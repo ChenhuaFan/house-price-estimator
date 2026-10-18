@@ -108,6 +108,7 @@ GRANT SELECT, INSERT ON estimator.estimate_warnings TO estimator_runtime;
 - Business and run identifiers use application- or migration-generated UUIDs.
 - Timestamps use `timestamptz`, are written in UTC, and default to `now()` where appropriate.
 - USD values use `numeric(18,2)` for database business logic.
+- Decimal model inputs must already be canonical before they reach PostgreSQL: `bathrooms` is an exact multiple of `0.5`, while `distance_to_city_center` and `school_rating` have at most three effective fractional decimal places. Values requiring scale rounding are rejected by the API; PostgreSQL type coercion must not silently change an input used for inference.
 - SHA-256 values are lowercase, 64-character hexadecimal strings.
 - Filesystem locations stored in PostgreSQL are relative to their documented snapshot, run, or artifact root and use POSIX separators; they are never machine-specific absolute paths.
 - Registered paths must match the `root_relative_path` domain in Section 9. They must also be resolved by the consuming application and rejected unless the canonical resolved path remains beneath its configured root; database string checks alone are not a filesystem security boundary.
@@ -335,7 +336,7 @@ One row is created before an attempted export begins. File and row-count columns
 
 One row is inserted for every completed evaluation, including rejected models. It stores the versioned `metrics.json` location and hash, model metrics, baseline metrics, acceptance-policy version, result, and evaluation time. A failed run that never completed evaluation has no metrics row.
 
-`metrics.json` uses schema version `1` and requires: `schema_version`, `training_run_id`, `dataset_version_id`, `snapshot_sha256`, `split_manifest_sha256`, row counts, model and baseline MAE/RMSE/MAPE, model R², acceptance-policy version, every threshold result, overall acceptance result, and `evaluated_at`. Every metric is encoded as the same fixed 12-fractional-digit decimal string stored in PostgreSQL. PostgreSQL stores the queryable scalar values; the JSON file preserves the complete versioned evaluation report.
+`metrics.json` uses schema version `1` and requires: `schema_version`, `training_run_id`, `dataset_version_id`, `snapshot_sha256`, `split_manifest_sha256`, row counts, model and baseline MAE/RMSE/MAPE, model R², acceptance-policy version, every threshold result, overall acceptance result, and `evaluated_at`. MAPE values are percentage points, not unit fractions: an error of 3.788% is encoded as `3.788000000000`. Every metric is encoded as the same fixed 12-fractional-digit decimal string stored in PostgreSQL. PostgreSQL stores the queryable scalar values; the JSON file preserves the complete versioned evaluation report.
 
 ### 9.3 `ml_registry.model_versions`
 
@@ -553,7 +554,7 @@ Cross-table rules that cannot be expressed as a row `CHECK` are enforced by the 
 
 ### 10.1 `estimator.clients`
 
-Stores the anonymous UUID from the first-party `HttpOnly`, `SameSite=Lax` cookie. It is not a user account and contains no personal profile data.
+Stores the anonymous UUID from the persistent first-party `hsbc_estimator_client` cookie. The portal sets the cookie with `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age=31536000`, a matching `Expires` value, and `Secure` whenever HTTPS is used. It is not a user account and contains no personal profile data. Clearing the cookie makes the retained rows unreachable from that browser but does not delete them.
 
 | Column | Type | Null | Rules |
 | --- | --- | --- | --- |
@@ -569,15 +570,15 @@ Stores one successful estimator result. Failed validation and failed predictions
 | --- | --- | --- | --- |
 | `estimate_id` | `uuid` | No | Primary key |
 | `client_id` | `uuid` | No | Foreign key to the owning anonymous client |
-| `request_id` | `uuid` | No | Idempotency key reused for retries |
+| `request_id` | `uuid` | No | Portal-generated UUIDv4 idempotency key reused for retries |
 | `created_at` | `timestamptz` | No | Defaults to `now()` |
 | Seven canonical model inputs | Canonical numeric types | No | Same hard rules as `catalog.housing_records` |
 | `predicted_price` | `numeric(18,2)` | No | `>= 0`, USD |
 | `currency_code` | `char(3)` | No | Must be `USD` |
 | `model_version` | `varchar(128)` | No | Foreign key to `ml_registry.model_versions` |
-| `correlation_id` | `uuid` | No | Links history to service logs |
+| `correlation_id` | `uuid` | No | Validated request correlation UUID linking history to service logs |
 
-`UNIQUE (client_id, request_id)` provides idempotency for the estimator's single-property submission flow. Task 1 batch-prediction calls do not create estimator history. If a future estimator batch-upload feature persists multiple items from one request, it must add a request-item index to the uniqueness key.
+`UNIQUE (client_id, request_id)` is the storage guard for the estimator's single-property idempotency protocol; the constraint alone does not define the API behavior. Before inference, an existing key with the same seven canonical input values returns the original immutable estimate, including its original price, model version, warnings, and creation time. Reusing the key with different canonical inputs returns `409 IDEMPOTENCY_KEY_REUSED`. When concurrent new requests both pass the initial lookup, the unique-conflict loser loads the committed winner and applies the same comparison. Task 1 batch-prediction calls do not create estimator history. If a future estimator batch-upload feature persists multiple items from one request, it must add a request-item index to the uniqueness key.
 
 ### 10.3 `estimator.estimate_warnings`
 
@@ -677,6 +678,7 @@ CREATE TABLE estimator.estimate_warnings (
 ### 10.5 History Lifecycle
 
 - Estimate and warning insertion is one transaction.
+- Idempotent retries return the original estimate and never re-infer after an existing key is found. Concurrent uniqueness conflicts resolve to the committed winner for identical inputs or `409 IDEMPOTENCY_KEY_REUSED` for different inputs.
 - `MODEL_OUTPUT_OUT_OF_DOMAIN` and all other failed predictions create neither an estimate nor a warning row.
 - History is ordered by `(created_at DESC, estimate_id DESC)` and cursor queries also filter by cookie-derived `client_id`.
 - Deleting one estimate uses both `client_id` and `estimate_id`.
@@ -747,5 +749,9 @@ For a clean environment, the explicit bootstrap order is: apply migrations, expo
 - `model-service` refuses to start ready when the active artifact is missing or its hash differs.
 - Market tables, aggregates, charts, and exports all use one resolved catalog version per request.
 - Submitting the demonstration fixture through the estimator creates ordinary history rows without changing `catalog`.
-- Two client cookies cannot read, export, or delete each other's estimates.
+- Two client cookies cannot read or delete each other's estimates.
 - Money round-trips through Python, Java, PostgreSQL, JSON, CSV, and PDF without losing the fixed two-decimal value.
+- Prediction endpoints reject decimal model inputs that would require PostgreSQL scale rounding, and the exact accepted values used for inference round-trip unchanged through estimate history.
+- Stored model and baseline MAPE values use percentage points consistently in `metrics.json`, PostgreSQL, acceptance checks, `model-info`, and user-visible output.
+- Retrying an estimator request with the same client, `request_id`, and canonical inputs returns the original estimate without a model call, including after model activation; different inputs with the same key return `409`, and concurrent identical submissions create exactly one row.
+- A valid inbound `X-Correlation-ID` UUID round-trips through headers, logs, downstream calls, and estimate persistence; an invalid value returns `400 INVALID_CORRELATION_ID` and creates no history row.
