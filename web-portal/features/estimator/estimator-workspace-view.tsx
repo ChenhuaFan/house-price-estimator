@@ -27,6 +27,7 @@ interface EstimatorWorkspaceViewProps {
 
 type EstimateFormProps = React.ComponentProps<typeof EstimateForm>;
 
+/** Composes estimator presentation while leaving mutations to the smart container. */
 export function EstimatorWorkspaceView(props: EstimatorWorkspaceViewProps): React.ReactElement {
   return (
     <div className="space-y-5">

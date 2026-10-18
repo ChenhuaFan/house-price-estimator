@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hsbc.market.mapper.export.ExportMarketQueryMapper">
+  <resultMap id="datasetVersionRecord" type="com.hsbc.market.model.persistence.DatasetVersionRecord">
+    <constructor>
+      <arg column="id" javaType="java.util.UUID"/>
+      <arg column="content_sha256" javaType="java.lang.String"/>
+    </constructor>
+  </resultMap>
+
+  <resultMap id="propertyRecordRow" type="com.hsbc.market.model.persistence.PropertyRecordRow">
+    <constructor>
+      <arg column="source_id" javaType="_long"/>
+      <arg column="square_footage" javaType="_long"/>
+      <arg column="bedrooms" javaType="_integer"/>
+      <arg column="bathrooms" javaType="java.math.BigDecimal"/>
+      <arg column="year_built" javaType="_integer"/>
+      <arg column="lot_size" javaType="_long"/>
+      <arg column="distance_to_city_center" javaType="java.math.BigDecimal"/>
+      <arg column="school_rating" javaType="java.math.BigDecimal"/>
+      <arg column="price" javaType="java.math.BigDecimal"/>
+    </constructor>
+  </resultMap>
+
+  <resultMap id="statisticsRowRecord" type="com.hsbc.market.model.persistence.StatisticsRowRecord">
+    <constructor>
+      <arg column="group_exact" javaType="java.math.BigDecimal"/>
+      <arg column="group_gte" javaType="java.math.BigDecimal"/>
+      <arg column="group_lt" javaType="java.math.BigDecimal"/>
+      <arg column="group_label" javaType="java.lang.String"/>
+      <arg column="values_json" javaType="java.lang.String"/>
+    </constructor>
+  </resultMap>
+
+  <sql id="propertyColumns">
+    source_id, square_footage, bedrooms, bathrooms, year_built, lot_size,
+    distance_to_city_center, school_rating, price
+  </sql>
+
+  <sql id="filters">
+    dataset_version_id = #{parameters.scope.datasetVersionId}
+    <if test="parameters.scope.priceGte != null">AND price &gt;= #{parameters.scope.priceGte}</if>
+    <if test="parameters.scope.priceLte != null">AND price &lt;= #{parameters.scope.priceLte}</if>
+    <if test="parameters.scope.squareFootageGte != null">AND square_footage &gt;= #{parameters.scope.squareFootageGte}</if>
+    <if test="parameters.scope.squareFootageLte != null">AND square_footage &lt;= #{parameters.scope.squareFootageLte}</if>
+    <if test="parameters.scope.bedroomsGte != null">AND bedrooms &gt;= #{parameters.scope.bedroomsGte}</if>
+    <if test="parameters.scope.bedroomsLte != null">AND bedrooms &lt;= #{parameters.scope.bedroomsLte}</if>
+    <if test="parameters.scope.bathroomsGte != null">AND bathrooms &gt;= #{parameters.scope.bathroomsGte}</if>
+    <if test="parameters.scope.bathroomsLte != null">AND bathrooms &lt;= #{parameters.scope.bathroomsLte}</if>
+    <if test="parameters.scope.yearBuiltGte != null">AND year_built &gt;= #{parameters.scope.yearBuiltGte}</if>
+    <if test="parameters.scope.yearBuiltLte != null">AND year_built &lt;= #{parameters.scope.yearBuiltLte}</if>
+    <if test="parameters.scope.lotSizeGte != null">AND lot_size &gt;= #{parameters.scope.lotSizeGte}</if>
+    <if test="parameters.scope.lotSizeLte != null">AND lot_size &lt;= #{parameters.scope.lotSizeLte}</if>
+    <if test="parameters.scope.distanceGte != null">AND distance_to_city_center &gt;= #{parameters.scope.distanceGte}</if>
+    <if test="parameters.scope.distanceLte != null">AND distance_to_city_center &lt;= #{parameters.scope.distanceLte}</if>
+    <if test="parameters.scope.schoolRatingGte != null">AND school_rating &gt;= #{parameters.scope.schoolRatingGte}</if>
+    <if test="parameters.scope.schoolRatingLte != null">AND school_rating &lt;= #{parameters.scope.schoolRatingLte}</if>
+  </sql>
+
+  <sql id="sortColumn">
+    <choose>
+      <when test="parameters.sortField.toString() == 'SOURCE_ID'">source_id</when>
+      <when test="parameters.sortField.toString() == 'PRICE'">price</when>
+      <when test="parameters.sortField.toString() == 'SQUARE_FOOTAGE'">square_footage</when>
+      <when test="parameters.sortField.toString() == 'BEDROOMS'">bedrooms</when>
+      <when test="parameters.sortField.toString() == 'BATHROOMS'">bathrooms</when>
+      <when test="parameters.sortField.toString() == 'YEAR_BUILT'">year_built</when>
+      <when test="parameters.sortField.toString() == 'LOT_SIZE'">lot_size</when>
+      <when test="parameters.sortField.toString() == 'DISTANCE_TO_CITY_CENTER'">distance_to_city_center</when>
+      <when test="parameters.sortField.toString() == 'SCHOOL_RATING'">school_rating</when>
+    </choose>
+  </sql>
+
+  <sql id="sortDirection">
+    <choose>
+      <when test="parameters.direction.toString() == 'DESC'">DESC</when>
+      <when test="parameters.direction.toString() == 'ASC'">ASC</when>
+    </choose>
+  </sql>
+
+  <sql id="cursorPredicate">
+    <if test="parameters.cursorSourceId != null">
+      <choose>
+        <when test="parameters.sortField.toString() == 'SOURCE_ID'">
+          AND source_id
+          <choose>
+            <when test="parameters.direction.toString() == 'DESC'">&lt;</when>
+            <when test="parameters.direction.toString() == 'ASC'">&gt;</when>
+          </choose>
+          #{parameters.cursorSourceId}
+        </when>
+        <otherwise>
+          AND (<include refid="sortColumn"/>, source_id)
+          <choose>
+            <when test="parameters.direction.toString() == 'DESC'">&lt;</when>
+            <when test="parameters.direction.toString() == 'ASC'">&gt;</when>
+          </choose>
+          (
+          <choose>
+            <when test="parameters.sortField.toString() == 'SQUARE_FOOTAGE' or parameters.sortField.toString() == 'LOT_SIZE'">
+              CAST(#{parameters.cursorSortValue} AS bigint)
+            </when>
+            <when test="parameters.sortField.toString() == 'BEDROOMS' or parameters.sortField.toString() == 'YEAR_BUILT'">
+              CAST(#{parameters.cursorSortValue} AS integer)
+            </when>
+            <otherwise>CAST(#{parameters.cursorSortValue} AS numeric)</otherwise>
+          </choose>
+          , #{parameters.cursorSourceId})
+        </otherwise>
+      </choose>
+    </if>
+  </sql>
+
+  <sql id="orderBy">
+    ORDER BY <include refid="sortColumn"/> <include refid="sortDirection"/>
+    <if test="parameters.sortField.toString() != 'SOURCE_ID'">
+      , source_id <include refid="sortDirection"/>
+    </if>
+  </sql>
+
+  <sql id="metricColumn">
+    <choose>
+      <when test="metric.field.toString() == 'ALL'">*</when>
+      <when test="metric.field.toString() == 'SOURCE_ID'">source_id</when>
+      <when test="metric.field.toString() == 'PRICE'">price</when>
+      <when test="metric.field.toString() == 'SQUARE_FOOTAGE'">square_footage</when>
+      <when test="metric.field.toString() == 'BEDROOMS'">bedrooms</when>
+      <when test="metric.field.toString() == 'BATHROOMS'">bathrooms</when>
+      <when test="metric.field.toString() == 'YEAR_BUILT'">year_built</when>
+      <when test="metric.field.toString() == 'LOT_SIZE'">lot_size</when>
+      <when test="metric.field.toString() == 'DISTANCE_TO_CITY_CENTER'">distance_to_city_center</when>
+      <when test="metric.field.toString() == 'SCHOOL_RATING'">school_rating</when>
+    </choose>
+  </sql>
+
+  <sql id="metricExpression">
+    <choose>
+      <when test="metric.method.toString() == 'COUNT'">count(<include refid="metricColumn"/>)</when>
+      <when test="metric.method.toString() == 'SUM'">sum(<include refid="metricColumn"/>)</when>
+      <when test="metric.method.toString() == 'AVG'">avg(<include refid="metricColumn"/>)</when>
+      <when test="metric.method.toString() == 'MIN'">min(<include refid="metricColumn"/>)</when>
+      <when test="metric.method.toString() == 'MAX'">max(<include refid="metricColumn"/>)</when>
+      <when test="metric.method.toString() == 'STDDEV_POP'">stddev_pop(<include refid="metricColumn"/>)</when>
+    </choose>
+  </sql>
+
+  <sql id="groupColumn">
+    <choose>
+      <when test="parameters.groupBy.field.toString() == 'PRICE'">price</when>
+      <when test="parameters.groupBy.field.toString() == 'SQUARE_FOOTAGE'">square_footage</when>
+      <when test="parameters.groupBy.field.toString() == 'BEDROOMS'">bedrooms</when>
+      <when test="parameters.groupBy.field.toString() == 'BATHROOMS'">bathrooms</when>
+      <when test="parameters.groupBy.field.toString() == 'YEAR_BUILT'">year_built</when>
+      <when test="parameters.groupBy.field.toString() == 'LOT_SIZE'">lot_size</when>
+      <when test="parameters.groupBy.field.toString() == 'DISTANCE_TO_CITY_CENTER'">distance_to_city_center</when>
+      <when test="parameters.groupBy.field.toString() == 'SCHOOL_RATING'">school_rating</when>
+    </choose>
+  </sql>
+
+  <sql id="groupExpression">
+    <choose>
+      <when test="parameters.groupBy.fixedWidth == null"><include refid="groupColumn"/></when>
+      <otherwise>floor(<include refid="groupColumn"/> / #{parameters.groupBy.fixedWidth}) * #{parameters.groupBy.fixedWidth}</otherwise>
+    </choose>
+  </sql>
+
+  <select id="findActiveVersion" resultMap="datasetVersionRecord">
+    SELECT dataset_version_id AS id, trim(content_sha256) AS content_sha256
+    FROM catalog.dataset_versions
+    WHERE is_active
+  </select>
+
+  <select id="findVersion" resultMap="datasetVersionRecord">
+    SELECT dataset_version_id AS id, trim(content_sha256) AS content_sha256
+    FROM catalog.dataset_versions
+    WHERE dataset_version_id = #{id}
+  </select>
+
+  <select id="selectPage" resultMap="propertyRecordRow">
+    SELECT <include refid="propertyColumns"/>
+    FROM catalog.housing_records
+    <where>
+      <include refid="filters"/>
+      <include refid="cursorPredicate"/>
+    </where>
+    <include refid="orderBy"/>
+    LIMIT #{parameters.limit}
+  </select>
+
+  <select id="stream" resultMap="propertyRecordRow" fetchSize="1000">
+    SELECT <include refid="propertyColumns"/>
+    FROM catalog.housing_records
+    <where><include refid="filters"/></where>
+    <include refid="orderBy"/>
+    LIMIT #{parameters.limit}
+  </select>
+
+  <select id="count" resultType="long">
+    SELECT count(*)
+    FROM catalog.housing_records
+    <where>
+      dataset_version_id = #{parameters.datasetVersionId}
+      <if test="parameters.priceGte != null">AND price &gt;= #{parameters.priceGte}</if>
+      <if test="parameters.priceLte != null">AND price &lt;= #{parameters.priceLte}</if>
+      <if test="parameters.squareFootageGte != null">AND square_footage &gt;= #{parameters.squareFootageGte}</if>
+      <if test="parameters.squareFootageLte != null">AND square_footage &lt;= #{parameters.squareFootageLte}</if>
+      <if test="parameters.bedroomsGte != null">AND bedrooms &gt;= #{parameters.bedroomsGte}</if>
+      <if test="parameters.bedroomsLte != null">AND bedrooms &lt;= #{parameters.bedroomsLte}</if>
+      <if test="parameters.bathroomsGte != null">AND bathrooms &gt;= #{parameters.bathroomsGte}</if>
+      <if test="parameters.bathroomsLte != null">AND bathrooms &lt;= #{parameters.bathroomsLte}</if>
+      <if test="parameters.yearBuiltGte != null">AND year_built &gt;= #{parameters.yearBuiltGte}</if>
+      <if test="parameters.yearBuiltLte != null">AND year_built &lt;= #{parameters.yearBuiltLte}</if>
+      <if test="parameters.lotSizeGte != null">AND lot_size &gt;= #{parameters.lotSizeGte}</if>
+      <if test="parameters.lotSizeLte != null">AND lot_size &lt;= #{parameters.lotSizeLte}</if>
+      <if test="parameters.distanceGte != null">AND distance_to_city_center &gt;= #{parameters.distanceGte}</if>
+      <if test="parameters.distanceLte != null">AND distance_to_city_center &lt;= #{parameters.distanceLte}</if>
+      <if test="parameters.schoolRatingGte != null">AND school_rating &gt;= #{parameters.schoolRatingGte}</if>
+      <if test="parameters.schoolRatingLte != null">AND school_rating &lt;= #{parameters.schoolRatingLte}</if>
+    </where>
+  </select>
+
+  <select id="selectStatistics" resultMap="statisticsRowRecord">
+    SELECT
+    <choose>
+      <when test="parameters.groupBy == null">
+        NULL::numeric AS group_exact, NULL::numeric AS group_gte,
+        NULL::numeric AS group_lt, NULL::text AS group_label
+      </when>
+      <when test="parameters.groupBy.fixedWidth == null">
+        <include refid="groupColumn"/>::numeric AS group_exact,
+        NULL::numeric AS group_gte, NULL::numeric AS group_lt,
+        <include refid="groupColumn"/>::text AS group_label
+      </when>
+      <otherwise>
+        NULL::numeric AS group_exact,
+        <include refid="groupExpression"/> AS group_gte,
+        (<include refid="groupExpression"/> + #{parameters.groupBy.fixedWidth}) AS group_lt,
+        (<include refid="groupExpression"/>)::text || '-' ||
+        (<include refid="groupExpression"/> + #{parameters.groupBy.fixedWidth})::text AS group_label
+      </otherwise>
+    </choose>
+    , jsonb_build_object(
+    <foreach collection="parameters.metrics" item="metric" separator=",">
+      #{metric.id}, <include refid="metricExpression"/>
+    </foreach>
+    )::text AS values_json
+    FROM catalog.housing_records
+    <where><include refid="filters"/></where>
+    <if test="parameters.groupBy != null">
+      GROUP BY <include refid="groupExpression"/>
+      ORDER BY
+      <choose>
+        <when test="parameters.order == null or parameters.order.by == 'group_key'">
+          <include refid="groupExpression"/>
+        </when>
+        <otherwise>
+          <foreach collection="parameters.metrics" item="metric">
+            <if test="metric.id == parameters.order.by"><include refid="metricExpression"/></if>
+          </foreach>
+        </otherwise>
+      </choose>
+      <choose>
+        <when test="parameters.order != null and parameters.order.direction.toString() == 'DESC'">DESC</when>
+        <when test="parameters.order == null or parameters.order.direction.toString() == 'ASC'">ASC</when>
+      </choose>
+      LIMIT #{parameters.limit}
+    </if>
+  </select>
+</mapper>

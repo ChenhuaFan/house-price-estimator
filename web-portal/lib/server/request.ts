@@ -1,3 +1,4 @@
+/** Normalized server-side fetch errors used by App Router error boundaries. */
 import type { ApiErrorBody } from "@/lib/api/types";
 
 export class ServerDataError extends Error {
@@ -12,6 +13,7 @@ export class ServerDataError extends Error {
   }
 }
 
+/** Fetches JSON for a Server Component with a timeout and stable error shape. */
 export async function fetchJson<T>(
   url: URL,
   init: RequestInit = {},
@@ -39,6 +41,7 @@ export async function fetchJson<T>(
   } catch {
     // The stable fallback below is used for non-JSON failures.
   }
+
   throw new ServerDataError(
     body.error?.message ?? "The request could not be completed. Please retry.",
     response.status,

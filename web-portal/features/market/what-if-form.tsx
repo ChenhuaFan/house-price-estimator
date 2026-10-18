@@ -17,6 +17,7 @@ import {
   type PropertyErrors,
 } from "@/lib/validation/property";
 
+/** Collects a non-persistent scenario and displays its prediction against the market. */
 export function WhatIfForm({
   onResult,
   disabled = false,
@@ -34,6 +35,7 @@ export function WhatIfForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+
     const nextErrors = validatePropertyDraft(draft);
     setErrors(nextErrors);
     const first = Object.keys(nextErrors)[0];
@@ -41,14 +43,20 @@ export function WhatIfForm({
       document.getElementById(`what-if-${first}`)?.focus();
       return;
     }
+
     setPending(true);
     setError(null);
+
     try {
       const response = await runWhatIf(propertyFromDraft(draft));
       setResult(response);
       onResult(response);
     } catch (requestError) {
-      setError(requestError instanceof PortalApiError ? requestError : new PortalApiError("Prediction is temporarily unavailable.", "REQUEST_FAILED"));
+      setError(
+        requestError instanceof PortalApiError
+          ? requestError
+          : new PortalApiError("Prediction is temporarily unavailable.", "REQUEST_FAILED"),
+      );
     } finally {
       setPending(false);
     }

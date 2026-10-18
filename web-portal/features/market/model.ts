@@ -1,3 +1,4 @@
+/** Contract-backed adapters between URL state, API wire types, and market view models. */
 import type { components } from "@/lib/api/market-v2.generated";
 import type {
   ChartPoint,
@@ -32,6 +33,7 @@ function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/** Parses untrusted search parameters into the bounded state accepted by Market API v2. */
 export function parseMarketQuery(
   input: Record<string, string | string[] | undefined>,
 ): MarketQueryState {
@@ -47,12 +49,15 @@ export function parseMarketQuery(
       query.sort = `${field}:${direction}`;
     }
   }
+
   const requestedLimit = Number(first(input.limit));
   if (Number.isInteger(requestedLimit) && requestedLimit >= 1 && requestedLimit <= 200) {
     query.limit = requestedLimit;
   }
+
   const cursor = first(input.cursor);
   if (cursor && cursor.length <= 2048) query.cursor = cursor;
+
   const dataset = first(input.dataset_version_id);
   if (dataset && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(dataset)) {
     query.dataset_version_id = dataset;
@@ -60,6 +65,7 @@ export function parseMarketQuery(
   return query;
 }
 
+/** Serializes committed market state without interpreting the opaque cursor. */
 export function queryToSearchParams(query: MarketQueryState): URLSearchParams {
   const params = new URLSearchParams();
   for (const key of marketFilterKeys) {
@@ -73,6 +79,7 @@ export function queryToSearchParams(query: MarketQueryState): URLSearchParams {
   return params;
 }
 
+/** Converts flat URL range keys into the nested OpenAPI filter shape. */
 export function queryToFilters(query: MarketQueryState): MarketFilters {
   const filters: MarketFilters = {};
   const pairs = [
@@ -104,6 +111,7 @@ export function queryToFilters(query: MarketQueryState): MarketFilters {
   return filters;
 }
 
+/** Builds the immutable dataset/filter/sort selection reused by export requests. */
 export function marketSelection(model: MarketPageModel): components["schemas"]["MarketSelection"] {
   const [field, direction] = model.query.sort.split(":") as [
     components["schemas"]["SortField"],
@@ -118,6 +126,7 @@ export function marketSelection(model: MarketPageModel): components["schemas"]["
   };
 }
 
+/** Maps exact API strings into the camel-cased record model consumed by the table. */
 export function mapPropertyPage(page: PropertyPageWire): PropertyRecord[] {
   return page.items.map((item) => ({
     id: item.source_id,
@@ -136,6 +145,7 @@ function metric(response: StatisticsResponseWire, id: string): string | null {
   return response.groups[0]?.values.find((value) => value.metric_id === id)?.value ?? null;
 }
 
+/** Extracts dashboard summary metrics while preserving decimal strings. */
 export function mapOverview(response: StatisticsResponseWire): MarketOverview {
   return {
     count: metric(response, "count") ?? "0",
@@ -147,6 +157,7 @@ export function mapOverview(response: StatisticsResponseWire): MarketOverview {
   };
 }
 
+/** Adapts bounded values for charts while retaining their exact text labels. */
 export function mapChart(response: StatisticsResponseWire, metricId: string): ChartPoint[] {
   return response.groups.map((group) => {
     const rawValue = group.values.find((value) => value.metric_id === metricId)?.value ?? "0";

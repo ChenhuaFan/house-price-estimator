@@ -1,3 +1,4 @@
+/** Browser API client for estimator mutations and incremental history reads. */
 import type { ApiErrorBody, Estimate, HistoryPage, PropertyInput } from "@/lib/api/types";
 
 export class PortalApiError extends Error {
@@ -31,6 +32,7 @@ async function responseBody<T>(response: Response): Promise<T> {
   );
 }
 
+/** Creates one idempotent estimate through the portal BFF. */
 export async function createEstimate(input: PropertyInput, requestId: string): Promise<Estimate> {
   const response = await fetch("/api/estimator/estimates", {
     method: "POST",
@@ -40,6 +42,7 @@ export async function createEstimate(input: PropertyInput, requestId: string): P
   return responseBody<Estimate>(response);
 }
 
+/** Loads the next opaque history page without caching browser data. */
 export async function loadHistory(cursor?: string | null): Promise<HistoryPage> {
   const query = new URLSearchParams({ limit: "20" });
   if (cursor) query.set("cursor", cursor);
@@ -47,6 +50,7 @@ export async function loadHistory(cursor?: string | null): Promise<HistoryPage> 
   return responseBody<HistoryPage>(response);
 }
 
+/** Deletes one estimate from the visitor-scoped history. */
 export async function deleteEstimate(estimateId: string): Promise<void> {
   const response = await fetch(`/api/estimator/estimates/${estimateId}`, {
     method: "DELETE",
@@ -55,6 +59,7 @@ export async function deleteEstimate(estimateId: string): Promise<void> {
   if (!response.ok) await responseBody<never>(response);
 }
 
+/** Removes all estimates associated with the current visitor. */
 export async function clearEstimateHistory(): Promise<void> {
   const response = await fetch("/api/estimator/estimates", {
     method: "DELETE",

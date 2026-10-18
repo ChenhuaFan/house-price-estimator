@@ -39,11 +39,18 @@ const filterLabels: Record<(typeof marketFilterKeys)[number], string> = {
   school_rating_gte: "School ≥", school_rating_lte: "School ≤",
 };
 
-function nullableMoney(value: string | null): string { return value === null ? "—" : formatMoney(value); }
-function nullableNumber(value: string | null, suffix = ""): string { return value === null ? "—" : `${formatNumber(value)}${suffix}`; }
+function nullableMoney(value: string | null): string {
+  return value === null ? "—" : formatMoney(value);
+}
 
+function nullableNumber(value: string | null, suffix = ""): string {
+  return value === null ? "—" : `${formatNumber(value)}${suffix}`;
+}
+
+/** Composes the presentational dashboard from server-provided data and callback props. */
 export function MarketDashboardView(props: Props): React.ReactElement {
   const activeFilters = marketFilterKeys.flatMap((key) => props.values[key] ? [{ key, value: props.values[key]! }] : []);
+
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="min-w-0 space-y-4">

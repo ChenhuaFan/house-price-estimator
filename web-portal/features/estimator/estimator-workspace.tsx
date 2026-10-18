@@ -1,5 +1,6 @@
 "use client";
 
+/** Smart container for estimator mutations, history, and comparison selection. */
 import { useCallback, useState } from "react";
 import type { Estimate, PropertyInput } from "@/lib/api/types";
 import type { EstimatorPageModel } from "@/features/estimator/server";
@@ -15,6 +16,7 @@ import { useLiveAnnouncement } from "@/hooks/use-live-announcement";
 
 type PendingAction = "create" | "history" | "delete" | "clear" | null;
 
+/** Owns interactive estimator state seeded by the Server Component page model. */
 export function EstimatorWorkspace({ initialModel }: { initialModel: EstimatorPageModel }): React.ReactElement {
   const [history, setHistory] = useState(initialModel.history.items);
   const [nextCursor, setNextCursor] = useState(initialModel.history.next_cursor);
@@ -28,10 +30,14 @@ export function EstimatorWorkspace({ initialModel }: { initialModel: EstimatorPa
   const estimate = useCallback(async (input: PropertyInput, requestId: string) => {
     setPending("create");
     setError(null);
+
     try {
       const created = await createEstimate(input, requestId);
       setCurrent(created);
-      setHistory((items) => [created, ...items.filter((item) => item.estimate_id !== created.estimate_id)]);
+      setHistory((items) => [
+        created,
+        ...items.filter((item) => item.estimate_id !== created.estimate_id),
+      ]);
       announce("Estimate created and added to history.");
       return created;
     } catch (requestError) {
@@ -47,13 +53,18 @@ export function EstimatorWorkspace({ initialModel }: { initialModel: EstimatorPa
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || pending) return;
+
     setPending("history");
     setError(null);
+
     try {
       const page = await loadHistory(nextCursor);
-      setHistory((items) => [...items, ...page.items.filter(
-        (item) => !items.some((existing) => existing.estimate_id === item.estimate_id),
-      )]);
+      setHistory((items) => [
+        ...items,
+        ...page.items.filter(
+          (item) => !items.some((existing) => existing.estimate_id === item.estimate_id),
+        ),
+      ]);
       setNextCursor(page.next_cursor);
       announce(`${page.items.length} more estimates loaded.`);
     } catch (requestError) {
@@ -68,6 +79,7 @@ export function EstimatorWorkspace({ initialModel }: { initialModel: EstimatorPa
   const remove = useCallback(async (estimateId: string) => {
     setPending("delete");
     setError(null);
+
     try {
       await deleteEstimate(estimateId);
       setHistory((items) => items.filter((item) => item.estimate_id !== estimateId));
@@ -90,6 +102,7 @@ export function EstimatorWorkspace({ initialModel }: { initialModel: EstimatorPa
   const clear = useCallback(async () => {
     setPending("clear");
     setError(null);
+
     try {
       await clearEstimateHistory();
       setHistory([]);
@@ -116,6 +129,7 @@ export function EstimatorWorkspace({ initialModel }: { initialModel: EstimatorPa
   }, []);
 
   const compared = history.filter((item) => selectedIds.has(item.estimate_id));
+
   return (
     <EstimatorWorkspaceView
       history={history}

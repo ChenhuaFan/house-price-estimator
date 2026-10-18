@@ -19,6 +19,7 @@ import { formatMoney, formatNumber, formatTimestamp } from "@/lib/format";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
+/** Displays the current estimate as an exact summary, chart, and input table. */
 export function EstimateResult({ estimate }: { estimate: Estimate | null }): React.ReactElement {
   if (!estimate) {
     return (

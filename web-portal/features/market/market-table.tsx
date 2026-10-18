@@ -19,6 +19,7 @@ const tableColumns: Array<{ key: string; label: string; value: (record: Property
   { key: "distance_to_city_center", label: "Distance", value: (item) => `${formatNumber(item.distanceToCityCenter)} mi` },
 ];
 
+/** Renders sortable, cursor-paginated market records without owning query state. */
 export function MarketTable({
   model,
   disabled = false,

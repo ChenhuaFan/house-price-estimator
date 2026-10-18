@@ -8,6 +8,7 @@ import { formatNumber, formatTimestamp } from "@/lib/format";
 
 const active = new Set(["QUEUED", "RUNNING"]);
 
+/** Presents export actions and the lifecycle of jobs tracked by the smart container. */
 export function ExportCentre({
   jobs,
   creatingFormat,

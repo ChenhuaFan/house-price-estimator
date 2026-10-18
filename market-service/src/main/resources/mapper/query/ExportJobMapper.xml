@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hsbc.market.mapper.query.ExportJobMapper">
+  <resultMap id="exportJobRecord" type="com.hsbc.market.model.persistence.ExportJobRecord">
+    <constructor>
+      <arg column="export_id" javaType="java.util.UUID"/>
+      <arg column="idempotency_key" javaType="java.util.UUID"/>
+      <arg column="request_sha256" javaType="java.lang.String"/>
+      <arg column="request_payload" javaType="java.lang.String"/>
+      <arg column="dataset_version_id" javaType="java.util.UUID"/>
+      <arg column="query_fingerprint" javaType="java.lang.String"/>
+      <arg column="format" javaType="java.lang.String"/>
+      <arg column="status" javaType="java.lang.String"/>
+      <arg column="state_revision" javaType="_long"/>
+      <arg column="cancel_requested" javaType="_boolean"/>
+      <arg column="lease_owner" javaType="java.lang.String"/>
+      <arg column="lease_expires_at" javaType="java.time.Instant"/>
+      <arg column="created_at" javaType="java.time.Instant"/>
+      <arg column="started_at" javaType="java.time.Instant"/>
+      <arg column="completed_at" javaType="java.time.Instant"/>
+      <arg column="expires_at" javaType="java.time.Instant"/>
+      <arg column="row_count" javaType="java.lang.Long"/>
+      <arg column="detail_row_count" javaType="java.lang.Long"/>
+      <arg column="details_truncated" javaType="java.lang.Boolean"/>
+      <arg column="content_key" javaType="java.lang.String"/>
+      <arg column="content_type" javaType="java.lang.String"/>
+      <arg column="content_length" javaType="java.lang.Long"/>
+      <arg column="content_sha256" javaType="java.lang.String"/>
+      <arg column="failure_code" javaType="java.lang.String"/>
+    </constructor>
+  </resultMap>
+
+  <sql id="columns">
+    export_id, idempotency_key, request_sha256, request_payload::text AS request_payload,
+    dataset_version_id, query_fingerprint, format, status, state_revision,
+    cancel_requested, lease_owner, lease_expires_at, created_at, started_at,
+    completed_at, expires_at, row_count, detail_row_count, details_truncated,
+    content_key, content_type, content_length, content_sha256, failure_code
+  </sql>
+
+  <select id="operationsWritable" resultType="boolean">
+    SELECT has_table_privilege(current_user, 'market_ops.export_jobs', 'INSERT')
+       AND has_table_privilege(current_user, 'market_ops.export_jobs', 'UPDATE')
+       AND has_table_privilege(current_user, 'market_ops.export_jobs', 'DELETE')
+  </select>
+
+  <select id="find" resultMap="exportJobRecord">
+    SELECT <include refid="columns"/>
+    FROM market_ops.export_jobs
+    WHERE export_id = #{id}
+  </select>
+
+  <select id="findByIdempotencyKey" resultMap="exportJobRecord">
+    SELECT <include refid="columns"/>
+    FROM market_ops.export_jobs
+    WHERE idempotency_key = #{key}
+  </select>
+
+  <insert id="insert">
+    INSERT INTO market_ops.export_jobs (
+      export_id, idempotency_key, request_sha256, request_payload,
+      dataset_version_id, query_fingerprint, format, status,
+      created_at, expires_at
+    ) VALUES (
+      #{exportId}, #{idempotencyKey}, #{requestSha256}, CAST(#{requestPayload} AS jsonb),
+      #{datasetVersionId}, #{queryFingerprint}, #{format}, #{status},
+      #{createdAt}, #{expiresAt}
+    )
+    ON CONFLICT (idempotency_key) DO NOTHING
+  </insert>
+
+  <select id="activeCount" resultType="long">
+    SELECT count(*)
+    FROM market_ops.export_jobs
+    WHERE status IN ('QUEUED', 'RUNNING')
+  </select>
+
+  <select id="claimNext" resultMap="exportJobRecord" flushCache="true">
+    WITH candidate AS (
+      SELECT export_id
+      FROM market_ops.export_jobs
+      WHERE status = 'QUEUED' AND cancel_requested = false
+      ORDER BY created_at
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    UPDATE market_ops.export_jobs job
+    SET status = 'RUNNING', state_revision = state_revision + 1,
+        lease_owner = #{workerId}, lease_expires_at = #{leaseExpiresAt},
+        started_at = coalesce(started_at, now())
+    FROM candidate
+    WHERE job.export_id = candidate.export_id
+    RETURNING job.export_id, job.idempotency_key, job.request_sha256,
+      job.request_payload::text AS request_payload, job.dataset_version_id,
+      job.query_fingerprint, job.format, job.status, job.state_revision,
+      job.cancel_requested, job.lease_owner, job.lease_expires_at, job.created_at,
+      job.started_at, job.completed_at, job.expires_at, job.row_count,
+      job.detail_row_count, job.details_truncated, job.content_key,
+      job.content_type, job.content_length, job.content_sha256, job.failure_code
+  </select>
+
+  <update id="cancel">
+    UPDATE market_ops.export_jobs
+    SET cancel_requested = true,
+        status = 'CANCELLED',
+        state_revision = state_revision + 1,
+        completed_at = coalesce(completed_at, now()),
+        lease_owner = null,
+        lease_expires_at = null,
+        content_key = CASE WHEN status = 'SUCCEEDED' THEN null ELSE content_key END,
+        content_type = CASE WHEN status = 'SUCCEEDED' THEN null ELSE content_type END,
+        content_length = CASE WHEN status = 'SUCCEEDED' THEN null ELSE content_length END,
+        content_sha256 = CASE WHEN status = 'SUCCEEDED' THEN null ELSE content_sha256 END
+    WHERE export_id = #{id} AND status NOT IN ('CANCELLED', 'EXPIRED')
+  </update>
+
+  <select id="cancellationRequested" resultType="boolean">
+    SELECT cancel_requested
+    FROM market_ops.export_jobs
+    WHERE export_id = #{id}
+  </select>
+
+  <update id="succeed">
+    UPDATE market_ops.export_jobs
+    SET status = 'SUCCEEDED', state_revision = state_revision + 1,
+        completed_at = #{completedAt}, lease_owner = null, lease_expires_at = null,
+        row_count = #{rowCount}, detail_row_count = #{detailRowCount},
+        details_truncated = #{detailsTruncated}, content_key = #{contentKey},
+        content_type = #{contentType}, content_length = #{contentLength},
+        content_sha256 = #{contentSha256}
+    WHERE export_id = #{exportId} AND state_revision = #{revision}
+      AND status = 'RUNNING' AND cancel_requested = false
+  </update>
+
+  <update id="fail">
+    UPDATE market_ops.export_jobs
+    SET status = 'FAILED', state_revision = state_revision + 1,
+        completed_at = #{completedAt}, lease_owner = null, lease_expires_at = null,
+        failure_code = #{code}, failure_summary = left(#{summary}, 512)
+    WHERE export_id = #{exportId} AND state_revision = #{revision} AND status = 'RUNNING'
+  </update>
+
+  <update id="markCancelled">
+    UPDATE market_ops.export_jobs
+    SET status = 'CANCELLED', state_revision = state_revision + 1,
+        completed_at = #{completedAt}, lease_owner = null, lease_expires_at = null
+    WHERE export_id = #{exportId} AND state_revision = #{revision} AND status = 'RUNNING'
+  </update>
+
+  <update id="recoverExpiredLeases">
+    UPDATE market_ops.export_jobs
+    SET status = CASE WHEN cancel_requested THEN 'CANCELLED' ELSE 'QUEUED' END,
+        state_revision = state_revision + 1,
+        completed_at = CASE
+          WHEN cancel_requested THEN coalesce(completed_at, #{now})
+          ELSE completed_at
+        END,
+        lease_owner = null, lease_expires_at = null
+    WHERE status = 'RUNNING' AND lease_expires_at &lt; #{now}
+  </update>
+
+  <select id="expired" resultMap="exportJobRecord">
+    SELECT <include refid="columns"/>
+    FROM market_ops.export_jobs
+    WHERE expires_at &lt;= #{now} AND status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
+    ORDER BY expires_at
+    LIMIT #{limit}
+  </select>
+
+  <update id="markExpired">
+    UPDATE market_ops.export_jobs
+    SET status = 'EXPIRED', state_revision = state_revision + 1,
+        content_key = null, content_type = null, content_length = null,
+        content_sha256 = null
+    WHERE export_id = #{id} AND status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
+  </update>
+</mapper>

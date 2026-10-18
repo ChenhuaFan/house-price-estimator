@@ -1,3 +1,4 @@
+/** Server-only loader that assembles one dataset-consistent market page model. */
 import type { MarketPageModel } from "@/lib/api/types";
 import { fetchJson } from "@/lib/server/request";
 import {
@@ -35,6 +36,7 @@ async function statistics(body: StatisticsQueryWire): Promise<StatisticsResponse
   });
 }
 
+/** Loads properties first, then pins all parallel aggregates to that dataset version. */
 export async function getMarketPageModel(searchParams: SearchParams): Promise<MarketPageModel> {
   const query = parseMarketQuery(searchParams);
   const propertyUrl = new URL(
@@ -46,6 +48,7 @@ export async function getMarketPageModel(searchParams: SearchParams): Promise<Ma
     headers: { "X-Correlation-ID": crypto.randomUUID() },
   });
 
+  // Statistics must use the version resolved by the property request to avoid mixed snapshots.
   const pinnedQuery = { ...query, dataset_version_id: propertyPage.dataset_version.id };
   const scope = {
     dataset_version_id: propertyPage.dataset_version.id,

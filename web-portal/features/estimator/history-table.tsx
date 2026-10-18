@@ -20,10 +20,12 @@ interface HistoryTableProps {
   onLoadMore: () => Promise<void>;
 }
 
+/** Presents history actions and comparison selection without owning mutation state. */
 export function HistoryTable(props: HistoryTableProps): React.ReactElement {
   async function confirmDelete(id: string): Promise<void> {
     if (window.confirm("Delete this estimate from your history?")) await props.onDelete(id);
   }
+
   async function confirmClear(): Promise<void> {
     if (window.confirm("Clear your complete estimate history? This cannot be undone.")) await props.onClear();
   }

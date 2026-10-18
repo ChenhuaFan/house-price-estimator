@@ -18,6 +18,7 @@ import { formatMoney, formatNumber } from "@/lib/format";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
+/** Compares two to four saved estimates in a chart and accessible table. */
 export function Comparison({ estimates }: { estimates: Estimate[] }): React.ReactElement | null {
   if (estimates.length < 2) return null;
   const chartLabel = `Comparison chart. ${estimates.map((item, index) => `Property ${index + 1}: ${formatMoney(item.predicted_price)}`).join("; ")}`;

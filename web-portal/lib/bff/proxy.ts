@@ -1,3 +1,4 @@
+/** Shared safeguards and streaming proxy utilities for portal BFF routes. */
 import { NextRequest, NextResponse } from "next/server";
 import type { ApiErrorBody } from "@/lib/api/types";
 
@@ -28,6 +29,7 @@ function correlationId(request: NextRequest): string | null {
   return validUuid(supplied) ? supplied.toLowerCase() : null;
 }
 
+/** Creates a stable JSON error response with its correlation identifier. */
 export function errorResponse(
   status: number,
   code: string,
@@ -40,6 +42,7 @@ export function errorResponse(
   );
 }
 
+/** Rejects state-changing requests that did not originate from this portal. */
 export function requireSameOrigin(request: NextRequest): NextResponse | null {
   const publicOrigin = process.env.PORTAL_PUBLIC_ORIGIN ?? request.nextUrl.origin;
   const allowedOrigins = new Set([new URL(publicOrigin).origin, request.nextUrl.origin]);
@@ -65,6 +68,7 @@ function applyClientCookie(response: NextResponse, identity: ClientIdentity): Ne
   return response;
 }
 
+/** Forwards one portal request while enforcing identity, size, and header boundaries. */
 export async function proxyRequest(
   request: NextRequest,
   target: URL,
@@ -78,6 +82,7 @@ export async function proxyRequest(
       "X-Correlation-ID must be a valid UUID.",
     );
   }
+
   const identity = clientIdentity(request);
   const outgoingHeaders = new Headers({ "X-Correlation-ID": correlation });
   if (options.includeClient) outgoingHeaders.set("X-Estimator-Client-ID", identity.id);
@@ -128,6 +133,7 @@ export async function proxyRequest(
     const value = downstream.headers.get(name);
     if (value) responseHeaders.set(name, value);
   }
+
   responseHeaders.set("X-Correlation-ID", downstream.headers.get("x-correlation-id") ?? correlation);
   const response = new NextResponse(downstream.status === 204 ? null : downstream.body, {
     status: downstream.status,
@@ -136,6 +142,7 @@ export async function proxyRequest(
   return applyClientCookie(response, identity);
 }
 
+/** Resolves a private backend URL from server-only configuration. */
 export function serviceUrl(service: "estimator" | "market", path: string): URL {
   const base = service === "estimator"
     ? process.env.ESTIMATOR_SERVICE_URL ?? "http://localhost:8001"
@@ -143,6 +150,7 @@ export function serviceUrl(service: "estimator" | "market", path: string): URL {
   return new URL(path, base);
 }
 
+/** Copies only bounded, syntactically safe query values to a backend URL. */
 export function copyAllowedQuery(source: URLSearchParams, target: URL): URL {
   for (const [key, value] of source.entries()) {
     if (/^[A-Za-z][A-Za-z0-9_]*$/.test(key) && value.length <= MAX_QUERY_VALUE_LENGTH) {

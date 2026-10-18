@@ -1,5 +1,6 @@
 "use client";
 
+/** Smart container for URL navigation, what-if state, and background export jobs. */
 import { useEffect, useReducer, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ExportFormat, ExportJob, MarketPageModel, WhatIfResponse } from "@/lib/api/types";
@@ -21,14 +22,18 @@ type ExportAction =
 
 function exportReducer(state: TrackedExport[], action: ExportAction): TrackedExport[] {
   if (action.type === "remove") return state.filter((item) => item.job.export_id !== action.id);
+
   const exists = state.some((item) => item.job.export_id === action.value.job.export_id);
   return exists
-    ? state.map((item) => item.job.export_id === action.value.job.export_id ? action.value : item)
+    ? state.map((item) =>
+        item.job.export_id === action.value.job.export_id ? action.value : item,
+      )
     : [action.value, ...state];
 }
 
 const terminalStatuses = new Set(["SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED"]);
 
+/** Coordinates client interactions while keeping the server-rendered dashboard visible. */
 export function MarketDashboard({ initialModel }: { initialModel: MarketPageModel }): React.ReactElement {
   const router = useRouter();
   const [isNavigating, startNavigation] = useTransition();
@@ -41,30 +46,43 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
   useEffect(() => {
     const active = exports.filter((item) => !terminalStatuses.has(item.job.status));
     if (active.length === 0) return;
+
     const controller = new AbortController();
     const delay = Math.max(1, Math.min(...active.map((item) => item.retryAfterSeconds))) * 1000;
     let timer: number | undefined;
 
+    // Hidden tabs retry locally instead of losing the active export polling cycle.
     async function poll(): Promise<void> {
       if (document.visibilityState !== "visible") {
         timer = window.setTimeout(() => void poll(), 1000);
         return;
       }
-      await Promise.all(active.map(async (item) => {
-        try {
-          const updated = await getExport(item.job.export_id, controller.signal);
-          dispatchExport({ type: "upsert", value: updated });
-        } catch (requestError) {
-          if (requestError instanceof Error && requestError.name === "AbortError") return;
-          setExportError(requestError instanceof PortalApiError
-            ? requestError
-            : new PortalApiError("Export status could not be refreshed.", "EXPORT_STATUS_FAILED"));
-        }
-      }));
+
+      await Promise.all(
+        active.map(async (item) => {
+          try {
+            const updated = await getExport(item.job.export_id, controller.signal);
+            dispatchExport({ type: "upsert", value: updated });
+          } catch (requestError) {
+            if (requestError instanceof Error && requestError.name === "AbortError") return;
+
+            setExportError(
+              requestError instanceof PortalApiError
+                ? requestError
+                : new PortalApiError(
+                    "Export status could not be refreshed.",
+                    "EXPORT_STATUS_FAILED",
+                  ),
+            );
+          }
+        }),
+      );
+
       if (!controller.signal.aborted) timer = window.setTimeout(() => void poll(), delay);
     }
 
     timer = window.setTimeout(() => void poll(), delay);
+
     return () => {
       if (timer !== undefined) window.clearTimeout(timer);
       controller.abort();
@@ -73,6 +91,7 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
 
   function navigate(params: URLSearchParams, replace = false): void {
     const suffix = params.toString();
+
     startNavigation(() => {
       if (replace) router.replace(suffix ? `/market?${suffix}` : "/market", { scroll: false });
       else router.push(suffix ? `/market?${suffix}` : "/market", { scroll: false });
@@ -85,6 +104,7 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
       const value = initialModel.query[key];
       if (value) params.set(key, String(value));
     }
+
     params.set("sort", initialModel.query.sort);
     params.set("limit", String(initialModel.query.limit));
     params.set("dataset_version_id", initialModel.datasetVersion.id);
@@ -98,6 +118,7 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
       if (value) params.set(key, value);
       else params.delete(key);
     }
+
     params.delete("cursor");
     navigate(params);
   }
@@ -114,6 +135,7 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
   function sortBy(column: string): void {
     const params = baseParams();
     const [currentField, currentDirection] = initialModel.query.sort.split(":");
+
     params.set("sort", `${column}:${currentField === column && currentDirection === "asc" ? "desc" : "asc"}`);
     params.delete("cursor");
     navigate(params);
@@ -121,6 +143,7 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
 
   function nextPage(): void {
     if (!initialModel.page.nextCursor) return;
+
     const params = baseParams();
     params.set("cursor", initialModel.page.nextCursor);
     navigate(params);
@@ -129,23 +152,27 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
   async function startExport(format: ExportFormat): Promise<void> {
     setCreatingFormat(format);
     setExportError(null);
+
     try {
       const request = {
         format,
         selection: marketSelection(initialModel),
-        ...(format === "PDF" ? {
-          pdf_options: {
-            template: "market-analysis-v1" as const,
-            include_details: true,
-            detail_limit: 500,
-            metrics: [
-              { id: "count", method: "COUNT" as const, field: "*" as const },
-              { id: "average_price", method: "AVG" as const, field: "price" as const },
-            ],
-            ...(whatIf ? { what_if: whatIf } : {}),
-          },
-        } : {}),
+        ...(format === "PDF"
+          ? {
+              pdf_options: {
+                template: "market-analysis-v1" as const,
+                include_details: true,
+                detail_limit: 500,
+                metrics: [
+                  { id: "count", method: "COUNT" as const, field: "*" as const },
+                  { id: "average_price", method: "AVG" as const, field: "price" as const },
+                ],
+                ...(whatIf ? { what_if: whatIf } : {}),
+              },
+            }
+          : {}),
       };
+
       const accepted = await createExport(request, crypto.randomUUID());
       dispatchExport({ type: "upsert", value: accepted });
       announce(`${format} export queued.`);
@@ -160,10 +187,17 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
 
   async function cancel(id: string): Promise<void> {
     setExportError(null);
+
     try {
       await cancelExport(id);
       const tracked = exports.find((item) => item.job.export_id === id);
-      if (tracked) dispatchExport({ type: "upsert", value: { ...tracked, job: { ...tracked.job, status: "CANCELLED" } } });
+      if (tracked) {
+        dispatchExport({
+          type: "upsert",
+          value: { ...tracked, job: { ...tracked.job, status: "CANCELLED" } },
+        });
+      }
+
       announce("Export cancelled.");
     } catch (requestError) {
       setExportError(requestError instanceof PortalApiError

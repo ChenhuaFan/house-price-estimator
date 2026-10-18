@@ -1,3 +1,4 @@
+/** Browser API client for isolated what-if and asynchronous export actions. */
 import type { ApiErrorBody, ExportJob, PropertyInput, WhatIfResponse } from "@/lib/api/types";
 import type { ExportCreateRequestWire, WhatIfResponseWire } from "@/features/market/model";
 import { PortalApiError } from "@/features/estimator/api";
@@ -38,6 +39,7 @@ function whatIfInput(input: PropertyInput): WhatIfResponseWire["inputs"] {
   };
 }
 
+/** Requests a model prediction without persisting estimator history. */
 export async function runWhatIf(input: PropertyInput): Promise<WhatIfResponse> {
   const response = await fetch("/api/market/what-if", {
     method: "POST",
@@ -47,6 +49,7 @@ export async function runWhatIf(input: PropertyInput): Promise<WhatIfResponse> {
   return parseResponse<WhatIfResponse>(response);
 }
 
+/** Starts a durable export and returns the server-directed polling interval. */
 export async function createExport(
   request: ExportCreateRequestWire,
   idempotencyKey: string,
@@ -63,7 +66,11 @@ export async function createExport(
   return { job, retryAfterSeconds: Number(response.headers.get("retry-after")) || 2 };
 }
 
-export async function getExport(exportId: string, signal?: AbortSignal): Promise<{ job: ExportJob; retryAfterSeconds: number }> {
+/** Reads one export job and allows the caller to cancel obsolete polling. */
+export async function getExport(
+  exportId: string,
+  signal?: AbortSignal,
+): Promise<{ job: ExportJob; retryAfterSeconds: number }> {
   const response = await fetch(`/api/market/exports/${encodeURIComponent(exportId)}`, {
     cache: "no-store",
     headers: correlationHeaders(),
@@ -73,6 +80,7 @@ export async function getExport(exportId: string, signal?: AbortSignal): Promise
   return { job, retryAfterSeconds: Number(response.headers.get("retry-after")) || 2 };
 }
 
+/** Cancels an active export job owned by the current browser session. */
 export async function cancelExport(exportId: string): Promise<void> {
   const response = await fetch(`/api/market/exports/${encodeURIComponent(exportId)}`, {
     method: "DELETE",

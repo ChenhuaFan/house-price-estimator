@@ -26,6 +26,7 @@ const ranges: RangeDefinition[] = [
 
 export type MarketFilterValues = Partial<Record<(typeof marketFilterKeys)[number], string>>;
 
+/** Edits market ranges locally and commits only validated filter sets. */
 export function FilterForm({
   values,
   disabled = false,
@@ -42,11 +43,19 @@ export function FilterForm({
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    setDraft(Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value === undefined ? "" : String(value)])));
+    setDraft(
+      Object.fromEntries(
+        Object.entries(values).map(([key, value]) => [
+          key,
+          value === undefined ? "" : String(value),
+        ]),
+      ),
+    );
   }, [values]);
 
   function submit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+
     for (const range of ranges) {
       const minimum = draft[range.min];
       const maximum = draft[range.max];
@@ -56,6 +65,7 @@ export function FilterForm({
         return;
       }
     }
+
     setError(null);
     onApply(draft);
   }

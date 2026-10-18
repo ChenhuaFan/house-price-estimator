@@ -31,6 +31,7 @@ function toDraft(input: PropertyInput): PropertyDraft {
   return Object.fromEntries(Object.entries(input).map(([key, value]) => [key, String(value)])) as PropertyDraft;
 }
 
+/** Validates all model fields and preserves idempotency across identical retries. */
 export function EstimateForm({ busy, apiError, scenario, onSubmit }: EstimateFormProps): React.ReactElement {
   const [draft, setDraft] = useState<PropertyDraft>(emptyPropertyDraft);
   const [errors, setErrors] = useState<PropertyErrors>({});
@@ -56,6 +57,7 @@ export function EstimateForm({ busy, apiError, scenario, onSubmit }: EstimateFor
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+
     const nextErrors = validatePropertyDraft(draft);
     setErrors(nextErrors);
     const first = Object.keys(nextErrors)[0] as PropertyFieldName | undefined;
@@ -63,6 +65,7 @@ export function EstimateForm({ busy, apiError, scenario, onSubmit }: EstimateFor
       document.getElementById(`estimate-${first}`)?.focus();
       return;
     }
+
     const input = propertyFromDraft(draft);
     const fingerprint = JSON.stringify(input);
     if (!requestRef.current || requestRef.current.fingerprint !== fingerprint) {
