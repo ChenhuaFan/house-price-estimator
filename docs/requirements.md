@@ -4,6 +4,8 @@
 
 The product must let users estimate individual property values and explore housing market data from one portal. This document describes what the product must do. The runtime component design is defined in [`architecture.md`](architecture.md), technology and quality rules in [`constraints.md`](constraints.md), and the durable business data model in [`data-schema.md`](data-schema.md).
 
+User-visible acceptance is defined in [`e2e-test-plan.md`](e2e-test-plan.md). Service, data, model, and deployment verification plus the complete requirement traceability matrix are defined in [`integration-test-plan.md`](integration-test-plan.md).
+
 [`Interview Tasks Fullstack.pdf`](../requirements/Interview%20Tasks%20Fullstack.pdf) is authoritative for the interview task's source requirements. An [English Markdown transcription](../requirements/Interview%20Tasks%20Fullstack.md) is available for convenience. Requirements explicitly described as project decisions or data assumptions supplement the PDF and must not be presented as PDF-mandated scope.
 
 Requirement provenance is expressed on each requirement or for an explicitly stated requirement range using the following categories:

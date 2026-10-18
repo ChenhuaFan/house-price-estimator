@@ -166,6 +166,8 @@ Hard validation is limited to presence, type, finiteness, discrete-value rules, 
 
 ## 8. Testing and Local Quality Gates
 
+Concrete browser acceptance cases are defined in [`e2e-test-plan.md`](e2e-test-plan.md); service, data, model, container, and traceability cases are defined in [`integration-test-plan.md`](integration-test-plan.md).
+
 - Frontend unit and component tests must use Vitest and React Testing Library. Browser end-to-end tests must use Playwright.
 - Python tests must use pytest. Ruff must enforce linting and formatting, and mypy must type-check application and training code.
 - Java tests must use JUnit 5 and Spring Boot Test. Integration tests that depend on PostgreSQL must use a disposable container rather than a shared developer database.
