@@ -44,7 +44,8 @@ bootstrap: db-migrate
 	else \
 		echo "An active model already exists; bootstrap is reusing it."; \
 	fi
-	$(COMPOSE) up -d --build model-service estimator-service market-service web-portal
+	$(COMPOSE) up -d --build --wait --wait-timeout 60 \
+		model-service estimator-service market-service web-portal
 	$(MAKE) smoke
 
 up:
