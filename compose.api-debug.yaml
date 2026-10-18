@@ -1,0 +1,4 @@
+services:
+  estimator-service:
+    ports:
+      - "${DEBUG_PUBLISH_HOST:-127.0.0.1}:${ESTIMATOR_DEBUG_PORT:-8001}:8000"

@@ -1,0 +1,166 @@
+name: ${COMPOSE_PROJECT_NAME:-hsbc-housing}
+
+x-service-security: &service-security
+  init: true
+  restart: unless-stopped
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+
+services:
+  postgres:
+    image: postgres:17.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-housing}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-housing_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-housing_admin} -d ${POSTGRES_DB:-housing}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [housing-private]
+
+  storage-init:
+    image: busybox:1.37.0
+    restart: "no"
+    command: ["sh", "-c", "chown -R 10001:10001 /data/snapshots /data/runs /data/artifacts && chmod 0750 /data/snapshots /data/runs /data/artifacts"]
+    volumes:
+      - training_snapshots:/data/snapshots
+      - training_runs:/data/runs
+      - model_artifacts:/data/artifacts
+    networks: [housing-private]
+
+  db-migrate:
+    image: flyway/flyway:11-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - -url=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-housing}
+      - -user=${POSTGRES_ADMIN_USER:-housing_admin}
+      - -password=${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      - -connectRetries=20
+      - -placeholders.database_name=${POSTGRES_DB:-housing}
+      - -placeholders.training_password=${TRAINING_DB_PASSWORD:?Set TRAINING_DB_PASSWORD in .env}
+      - -placeholders.model_password=${MODEL_DB_PASSWORD:?Set MODEL_DB_PASSWORD in .env}
+      - -placeholders.estimator_password=${ESTIMATOR_DB_PASSWORD:?Set ESTIMATOR_DB_PASSWORD in .env}
+      - -placeholders.market_password=${MARKET_DB_PASSWORD:?Set MARKET_DB_PASSWORD in .env}
+      - migrate
+    volumes:
+      - ./database/migrations:/flyway/sql:ro
+    networks: [housing-private]
+
+  training:
+    profiles: [training]
+    image: hsbc/training:${IMAGE_TAG:-dev}
+    build:
+      context: ./training
+    restart: "no"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    environment:
+      TRAINING_DATABASE_URL: postgresql://training_runtime:${TRAINING_DB_PASSWORD:?Set TRAINING_DB_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-housing}
+      SNAPSHOT_ROOT: /data/snapshots
+      TRAINING_RUN_ROOT: /data/runs
+      MODEL_ARTIFACT_ROOT: /data/artifacts
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-0000000}
+    volumes:
+      - training_snapshots:/data/snapshots
+      - training_runs:/data/runs
+      - model_artifacts:/data/artifacts
+    networks: [housing-private]
+
+  model-service:
+    <<: *service-security
+    image: hsbc/model-service:${IMAGE_TAG:-dev}
+    build:
+      context: ./model-service
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    environment:
+      MODEL_DATABASE_URL: postgresql://model_runtime:${MODEL_DB_PASSWORD:?Set MODEL_DB_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-housing}
+      MODEL_ARTIFACT_ROOT: /artifacts
+      ALLOWED_ORIGINS: ${PORTAL_PUBLIC_ORIGIN:-http://localhost:3000}
+    volumes:
+      - model_artifacts:/artifacts:ro
+    ports:
+      - "${PUBLISH_HOST:-127.0.0.1}:${MODEL_PORT:-8000}:8000"
+    networks: [housing-private]
+
+  estimator-service:
+    <<: *service-security
+    image: hsbc/estimator-service:${IMAGE_TAG:-dev}
+    build:
+      context: ./estimator-service
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      model-service:
+        condition: service_started
+    environment:
+      ESTIMATOR_DATABASE_URL: postgresql://estimator_runtime:${ESTIMATOR_DB_PASSWORD:?Set ESTIMATOR_DB_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-housing}
+      MODEL_SERVICE_URL: http://model-service:8000
+      PORTAL_ORIGIN: ${PORTAL_PUBLIC_ORIGIN:-http://localhost:3000}
+    expose: ["8000"]
+    networks: [housing-private]
+
+  market-service:
+    <<: *service-security
+    image: hsbc/market-service:${IMAGE_TAG:-dev}
+    build:
+      context: ./market-service
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      model-service:
+        condition: service_started
+    environment:
+      MARKET_DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-housing}
+      MARKET_DATABASE_USER: market_runtime
+      MARKET_DATABASE_PASSWORD: ${MARKET_DB_PASSWORD:?Set MARKET_DB_PASSWORD in .env}
+      MODEL_SERVICE_URL: http://model-service:8000
+      PORTAL_ORIGIN: ${PORTAL_PUBLIC_ORIGIN:-http://localhost:3000}
+      JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+    expose: ["8080"]
+    networks: [housing-private]
+
+  web-portal:
+    <<: *service-security
+    image: hsbc/web-portal:${IMAGE_TAG:-dev}
+    build:
+      context: ./web-portal
+    depends_on:
+      estimator-service:
+        condition: service_started
+      market-service:
+        condition: service_started
+    environment:
+      ESTIMATOR_SERVICE_URL: http://estimator-service:8000
+      MARKET_SERVICE_URL: http://market-service:8080
+      PORTAL_PUBLIC_ORIGIN: ${PORTAL_PUBLIC_ORIGIN:-http://localhost:3000}
+    ports:
+      - "${PUBLISH_HOST:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    networks: [housing-private]
+
+volumes:
+  postgres_data:
+  training_snapshots:
+  training_runs:
+  model_artifacts:
+
+networks:
+  housing-private:
+    driver: bridge

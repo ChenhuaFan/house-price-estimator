@@ -1,0 +1,7 @@
+services:
+  model-service:
+    ports: !override
+      - "${PUBLISH_HOST:-0.0.0.0}:${MODEL_PORT:-8000}:8000"
+  web-portal:
+    ports: !override
+      - "${PUBLISH_HOST:-0.0.0.0}:${WEB_PORT:-3000}:3000"

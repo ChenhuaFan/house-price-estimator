@@ -483,6 +483,48 @@ def publish(
         raise
 
 
+def preflight_candidate(settings: Settings, model_version: str) -> tuple[Path, UUID]:
+    """Verify an already registered candidate without changing registry state."""
+    registry = Registry(settings.database_url)
+    record = registry.model_version(model_version)
+    if record["lifecycle_status"] != "CANDIDATE" or record["run_status"] != "SUCCEEDED":
+        raise ValueError("only a candidate from a successful training run can be activated")
+
+    artifact_root = settings.artifact_root.resolve()
+    artifact_path = (artifact_root / str(record["artifact_path"])).resolve()
+    metadata_path = (artifact_root / str(record["metadata_path"])).resolve()
+    for path in (artifact_path, metadata_path):
+        if artifact_root not in path.parents or not path.is_file():
+            raise ValueError("candidate artifact path is missing or escapes MODEL_ARTIFACT_ROOT")
+    if sha256_file(artifact_path) != str(record["artifact_sha256"]).strip():
+        raise ValueError("candidate model artifact fingerprint mismatch")
+    if sha256_file(metadata_path) != str(record["metadata_sha256"]).strip():
+        raise ValueError("candidate metadata fingerprint mismatch")
+
+    model = joblib.load(artifact_path)
+    metadata = read_json(metadata_path)
+    if metadata.get("model_version") != model_version:
+        raise ValueError("candidate metadata version mismatch")
+    if metadata.get("feature_names") != list(FEATURES) or len(model.coef_) != len(FEATURES):
+        raise ValueError("candidate feature contract failed preflight")
+
+    return artifact_path, UUID(str(record["training_run_id"]))
+
+
+def activate_candidate(settings: Settings, model_version: str) -> Path:
+    """Preflight and atomically activate an already registered candidate."""
+    artifact_path, run_id = preflight_candidate(settings, model_version)
+    registry = Registry(settings.database_url)
+
+    state = load_state(settings.run_root, run_id)
+    state["pending_registry_operation"] = "PROMOTE_MODEL"
+    save_state(settings.run_root, run_id, state)
+    registry.promote_model(model_version)
+    state["pending_registry_operation"] = "NONE"
+    save_state(settings.run_root, run_id, state)
+    return artifact_path
+
+
 def run_pipeline(
     settings: Settings,
     dataset_version_id: UUID,

@@ -39,35 +39,9 @@ training/artifacts/*
 # Generated exports and temporary files
 tmp/
 *.tmp
-
-# Local environment and secrets
-.env
-.env.*
-!.env.example
-
-# Temporary files
-tmp/
 *.log
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# Node.js and Next.js
-node_modules/
-.next/
 out/
-coverage/
 *.tsbuildinfo
-
-# Java and Maven
-target/
 .classpath
 .project
 .settings/

@@ -104,6 +104,21 @@ class Registry:
         with psycopg.connect(self.database_url) as connection, connection.cursor() as cursor:
             cursor.execute("SELECT ml_registry.promote_model(%s)", (model_version,))
 
+    def model_version(self, model_version: str) -> dict[str, Any]:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """
+                SELECT mv.*, tr.run_status, tr.dataset_version_id, tr.git_commit_sha
+                  FROM ml_registry.model_versions mv
+                  JOIN ml_registry.training_runs tr USING (training_run_id)
+                 WHERE mv.model_version = %s
+                """,
+                (model_version,),
+            ).fetchone()
+        if row is None:
+            raise ValueError(f"model version {model_version} was not found")
+        return dict(row)
+
     def run(self, run_id: UUID) -> dict[str, Any]:
         with psycopg.connect(self.database_url, row_factory=dict_row) as connection:
             row = connection.execute(
