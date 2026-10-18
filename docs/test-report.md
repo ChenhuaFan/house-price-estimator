@@ -9,9 +9,9 @@ The implementation at commit `f3ea323863c2808a2133706820b3d87f4666ea8c` passes t
 | PDF-required application behaviour | **Pass** | All locally executable P0 journeys passed. |
 | Reliability, usability, accessibility, and isolation | **Pass** | All locally executable P1 checks passed without a waiver. |
 | Build, test, image, and local deployment | **Pass** | `make verify` completed successfully from the tested commit. |
-| GitHub delivery | **Pending** | This checkout has no Git remote. The PDF's GitHub-source requirement cannot be closed until the intended repository is supplied and the commits are pushed. |
+| GitHub delivery | **Pass** | The complete `main` history is published in the public [`ChenhuaFan/house-price-estimator`](https://github.com/ChenhuaFan/house-price-estimator) repository. |
 
-There are no unresolved local P0 or P1 product defects. GitHub publication is the only outstanding delivery item; it does not affect the local test result, but it prevents the overall PDF delivery gate from being marked complete.
+There are no unresolved P0 or P1 product defects and no outstanding PDF delivery items.
 
 ## 2. Scope and environment
 
@@ -68,7 +68,7 @@ The six skipped matrix entries are not untested features: route-failure recovery
 
 ## 5. User and requirement coverage
 
-The passing browser and service suites cover every numbered requirement in the two test plans, subject only to the GitHub publication item noted above. In particular, the run verified:
+The passing browser and service suites cover every numbered requirement in the two test plans. In particular, the run verified:
 
 - live Swagger discovery, single and batch prediction, model metadata, validation, advisory warnings, and correlation IDs;
 - shared navigation, deep links, route loading, user-readable errors, retry recovery, keyboard use, reduced motion, accessibility, and responsive layouts;
@@ -147,4 +147,4 @@ IMAGE_TAG=f3ea323863c2 \
 docker compose down --volumes --remove-orphans
 ```
 
-The default local Docker deployment remains the supported demonstration target. The project documents do not require a public hosted runtime; the source PDF does require GitHub publication.
+The default local Docker deployment remains the supported demonstration target. The project documents do not require a public hosted runtime. The source PDF's GitHub-publication requirement is satisfied by the public repository linked in Section 1.

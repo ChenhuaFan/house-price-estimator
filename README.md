@@ -1,5 +1,7 @@
 # Housing Intelligence Portal
 
+Public source repository: [`ChenhuaFan/house-price-estimator`](https://github.com/ChenhuaFan/house-price-estimator)
+
 This repository implements both assignments from `requirements/Interview Tasks Fullstack.pdf`:
 
 - a containerised housing-price regression API built with Python 3.12, FastAPI, and Scikit-learn;
