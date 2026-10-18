@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,6 +15,8 @@ import org.springframework.web.client.RestClientException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
     @ExceptionHandler({IllegalArgumentException.class})
     ResponseEntity<Map<String, Object>> badRequest(
             IllegalArgumentException error, HttpServletRequest request) {
@@ -37,6 +41,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<Map<String, Object>> internal(Exception error, HttpServletRequest request) {
+        LOGGER.error("Unhandled market service error", error);
         return response(500, "INTERNAL_ERROR",
                 "The market request could not be completed.", request, List.of());
     }

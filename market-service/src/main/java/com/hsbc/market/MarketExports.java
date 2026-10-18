@@ -20,6 +20,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -161,7 +162,10 @@ public final class MarketExports {
             graphics.fillRoundRect(x, y, barWidth, barHeight, 8, 8);
             graphics.setColor(new Color(15, 23, 42));
             graphics.drawString(point.label(), x + barWidth / 2 - 4, 165);
-            graphics.drawString("$" + point.value().setScale(0), x, Math.max(15, y - 4));
+            graphics.drawString(
+                    "$" + point.value().setScale(0, RoundingMode.HALF_UP).toPlainString(),
+                    x,
+                    Math.max(15, y - 4));
         }
         graphics.dispose();
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
