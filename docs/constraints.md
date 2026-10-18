@@ -13,8 +13,8 @@ The baseline uses the lowest version line explicitly permitted by the source doc
 | ASGI server | Uvicorn | 0.34.0 | Inferred compatible runtime for FastAPI 0.115.12 |
 | Machine learning | Scikit-learn | 1.6.1 | Inferred stable line with Python 3.12 support |
 | Frontend runtime | Node.js | 20.x, minimum 20.9.0 | Inferred LTS runtime compatible with Next.js 15 |
-| Unified portal | Next.js | 15.2.4 | Inferred stable App Router release available before the source date |
-| UI runtime | React and React DOM | 19.0.0 | Required by the selected Next.js 15 App Router baseline |
+| Unified portal | Next.js | 15.5.28 | Security-maintained Next.js 15 App Router release; preserves the PDF-compatible major baseline |
+| UI runtime | React and React DOM | 19.0.1 | Security-patched React 19 release compatible with Next.js 15 |
 | Frontend language | TypeScript | 5.1.0 or later within 5.x | Inferred compatible baseline for the selected Next.js line |
 | Frontend styling | Tailwind CSS | 4.0.0 | Inferred stable major release available before the source date |
 | JavaScript package manager | pnpm | 10.6.x | Inferred stable release line available before the source date |
@@ -34,7 +34,7 @@ The baseline uses the lowest version line explicitly permitted by the source doc
 - Direct application dependencies must be pinned to the baseline versions in their manifests when each application is created.
 - The `web-portal` package must declare its pnpm version through the `packageManager` field and commit its `pnpm-lock.yaml`.
 - Generated lockfiles must be committed and used for reproducible installs.
-- Patch-level security and defect fixes may be applied within the selected release line without changing the architectural baseline. Major-version changes require a documented technical decision.
+- Security and defect fixes may be applied within the selected major release line when an older minor line no longer receives all required fixes. Major-version changes require a documented technical decision.
 
 ## 2. Model and Numerical Constraints
 
