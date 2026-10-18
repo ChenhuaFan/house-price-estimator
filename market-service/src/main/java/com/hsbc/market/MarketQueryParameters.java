@@ -3,9 +3,14 @@ package com.hsbc.market;
 import static com.hsbc.market.MarketModels.MarketQuery;
 
 import java.math.BigDecimal;
+import java.util.Set;
 import java.util.UUID;
 
 public class MarketQueryParameters {
+    private static final Set<String> SORT_FIELDS = Set.of(
+            "source_id", "price", "square_footage", "bedrooms", "bathrooms",
+            "year_built", "lot_size", "distance_to_city_center", "school_rating");
+
     private BigDecimal priceMin;
     private BigDecimal priceMax;
     private Long squareFootageMin;
@@ -34,11 +39,30 @@ public class MarketQueryParameters {
         if (!"asc".equalsIgnoreCase(direction) && !"desc".equalsIgnoreCase(direction)) {
             throw new IllegalArgumentException("direction must be asc or desc");
         }
+        String normalizedSort = sort == null || sort.isBlank() ? "source_id" : sort;
+        if (!SORT_FIELDS.contains(normalizedSort)) {
+            throw new IllegalArgumentException("unsupported sort field: " + normalizedSort);
+        }
+        validateRange("price", priceMin, priceMax);
+        validateRange("square_footage", squareFootageMin, squareFootageMax);
+        validateRange("bedrooms", bedroomsMin, bedroomsMax);
+        validateRange("bathrooms", bathroomsMin, bathroomsMax);
+        validateRange("year_built", yearBuiltMin, yearBuiltMax);
+        validateRange("lot_size", lotSizeMin, lotSizeMax);
+        validateRange("distance_to_city_center", distanceMin, distanceMax);
+        validateRange("school_rating", schoolRatingMin, schoolRatingMax);
         return new MarketQuery(
                 priceMin, priceMax, squareFootageMin, squareFootageMax, bedroomsMin, bedroomsMax,
                 bathroomsMin, bathroomsMax, yearBuiltMin, yearBuiltMax, lotSizeMin, lotSizeMax,
                 distanceMin, distanceMax, schoolRatingMin, schoolRatingMax,
-                sort, direction, page, size, datasetVersionId);
+                normalizedSort, direction.toLowerCase(), page, size, datasetVersionId);
+    }
+
+    private static <T extends Comparable<T>> void validateRange(
+            String field, T minimum, T maximum) {
+        if (minimum != null && maximum != null && minimum.compareTo(maximum) > 0) {
+            throw new IllegalArgumentException(field + " minimum cannot exceed maximum");
+        }
     }
 
     public BigDecimal getPriceMin() { return priceMin; }

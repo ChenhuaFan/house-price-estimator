@@ -16,7 +16,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class MarketRepository {
+public class MarketRepository implements MarketDataRepository {
     private static final Set<String> SORT_FIELDS = Set.of(
             "source_id", "price", "square_footage", "bedrooms", "bathrooms",
             "year_built", "lot_size", "distance_to_city_center", "school_rating");
@@ -27,6 +27,7 @@ public class MarketRepository {
         this.jdbc = jdbc;
     }
 
+    @Override
     public DatasetVersion resolveVersion(UUID requested) {
         String sql = """
                 SELECT dataset_version_id, version_name, content_sha256, row_count
@@ -42,6 +43,7 @@ public class MarketRepository {
         return versions.getFirst();
     }
 
+    @Override
     public MarketAnalysis analyse(DatasetVersion version, MarketQuery query) {
         QueryParts parts = queryParts(version.id(), query);
         long count = jdbc.queryForObject(
@@ -96,7 +98,7 @@ public class MarketRepository {
                        END AS label,
                        count(*)::numeric AS value
                   FROM catalog.housing_records
-                """ + parts.where() + " GROUP BY label ORDER BY label",
+                """ + parts.where() + " GROUP BY label ORDER BY min(school_rating)",
                 (result, row) -> new ChartPoint(result.getString("label"), result.getBigDecimal("value")),
                 parts.parameters().toArray()));
         return new MarketAnalysis(
@@ -104,6 +106,7 @@ public class MarketRepository {
                 records, aggregates, charts);
     }
 
+    @Override
     public List<PropertyRecord> allMatching(DatasetVersion version, MarketQuery query) {
         QueryParts parts = queryParts(version.id(), query);
         String sort = sortColumn(query.normalizedSort());
@@ -134,8 +137,8 @@ public class MarketRepository {
         return new QueryParts(where.toString(), parameters);
     }
 
-    private void addRange(
-            StringBuilder where, List<Object> parameters, String column, Object minimum, Object maximum) {
+    private <T extends Comparable<? super T>> void addRange(
+            StringBuilder where, List<Object> parameters, String column, T minimum, T maximum) {
         if (minimum != null) {
             where.append(" AND ").append(column).append(" >= ?");
             parameters.add(minimum);
@@ -144,9 +147,7 @@ public class MarketRepository {
             where.append(" AND ").append(column).append(" <= ?");
             parameters.add(maximum);
         }
-        if (minimum instanceof Comparable minimumComparable
-                && maximum != null
-                && minimumComparable.compareTo(maximum) > 0) {
+        if (minimum != null && maximum != null && minimum.compareTo(maximum) > 0) {
             throw new IllegalArgumentException(column + " minimum cannot exceed maximum");
         }
     }

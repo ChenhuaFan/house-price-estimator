@@ -2,32 +2,18 @@ package com.hsbc.market;
 
 import static com.hsbc.market.MarketModels.*;
 
-import java.time.Duration;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 
 @Service
 public class MarketService {
-    private final MarketRepository repository;
-    private final RestClient modelClient;
+    private final MarketDataRepository repository;
+    private final PredictionGateway predictionGateway;
 
-    public MarketService(
-            MarketRepository repository,
-            RestClient.Builder builder,
-            @Value("${model-service.url}") String modelUrl,
-            @Value("${model-service.connect-timeout}") Duration connectTimeout,
-            @Value("${model-service.response-timeout}") Duration responseTimeout) {
+    public MarketService(MarketDataRepository repository, PredictionGateway predictionGateway) {
         this.repository = repository;
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(connectTimeout);
-        requestFactory.setReadTimeout(responseTimeout);
-        this.modelClient = builder.baseUrl(modelUrl).requestFactory(requestFactory).build();
+        this.predictionGateway = predictionGateway;
     }
 
     public DatasetVersion resolveVersion(UUID requested) {
@@ -41,17 +27,7 @@ public class MarketService {
 
     public WhatIfResponse whatIf(PropertyInput input, String correlationId) {
         input.validateStep();
-        PredictResponse response = modelClient.post()
-                .uri("/api/v1/predict")
-                .header("X-Correlation-ID", correlationId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(new PredictRequest(input))
-                .retrieve()
-                .body(PredictResponse.class);
-        if (response == null || response.predictions() == null || response.predictions().size() != 1) {
-            throw new ModelServiceException("Prediction service returned an invalid response");
-        }
-        return new WhatIfResponse(input, response.predictions().getFirst());
+        return new WhatIfResponse(input, predictionGateway.predict(input, correlationId));
     }
 
     public byte[] csv(DatasetVersion version, MarketQuery query) {
@@ -67,11 +43,5 @@ public class MarketService {
                 query.sort(), query.direction(), 0, 5000, version.id());
         MarketAnalysis full = repository.analyse(version, fullQuery);
         return MarketExports.pdf(full, query, whatIf);
-    }
-
-    public static class ModelServiceException extends RuntimeException {
-        public ModelServiceException(String message) {
-            super(message);
-        }
     }
 }

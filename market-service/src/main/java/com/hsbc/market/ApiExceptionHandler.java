@@ -11,7 +11,6 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.client.RestClientException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -32,9 +31,15 @@ public class ApiExceptionHandler {
         return response(422, "VALIDATION_ERROR", "Request body is invalid.", request, fields);
     }
 
-    @ExceptionHandler({MarketService.ModelServiceException.class, RestClientException.class})
+    @ExceptionHandler(ModelServiceRejectedException.class)
+    ResponseEntity<Map<String, Object>> modelRejected(
+            ModelServiceRejectedException error, HttpServletRequest request) {
+        return response(error.statusCode(), error.code(), error.getMessage(), request, List.of());
+    }
+
+    @ExceptionHandler(ModelServiceException.class)
     ResponseEntity<Map<String, Object>> modelUnavailable(
-            RuntimeException error, HttpServletRequest request) {
+            ModelServiceException error, HttpServletRequest request) {
         return response(503, "MODEL_SERVICE_UNAVAILABLE",
                 "Prediction is temporarily unavailable. Please retry.", request, List.of());
     }

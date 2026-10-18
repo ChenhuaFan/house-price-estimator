@@ -47,7 +47,8 @@ public final class MarketExports {
                     .append(record.lotSize()).append(',')
                     .append(record.distanceToCityCenter().toPlainString()).append(',')
                     .append(record.schoolRating().toPlainString()).append(',')
-                    .append(record.price().setScale(2).toPlainString()).append('\n');
+                    .append(record.price().setScale(2, RoundingMode.HALF_UP).toPlainString())
+                    .append('\n');
         }
         return output.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -130,7 +131,7 @@ public final class MarketExports {
     }
 
     private static String money(BigDecimal value) {
-        return "USD " + value.setScale(2).toPlainString();
+        return "USD " + value.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     private static void addHeader(PdfPTable table, String... values) {

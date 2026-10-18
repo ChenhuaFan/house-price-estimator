@@ -76,7 +76,7 @@ python-test:
 
 test: python-test
 	cd web-portal && pnpm lint && pnpm typecheck && pnpm build
-	docker run --rm -v "$(CURDIR)/market-service:/workspace" -w /workspace maven:3.9.9-eclipse-temurin-21 mvn -B test
+	./scripts/test-market.sh
 
 verify: test
 	$(COMPOSE) config --quiet
