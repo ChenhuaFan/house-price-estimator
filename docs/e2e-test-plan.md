@@ -297,3 +297,5 @@ Release E2E testing is complete when:
 - the test report retains browser/version data, Git commit, Compose image identifiers, active dataset/model versions, results, traces for failures, and links to defects.
 
 The full `REQ-*` mapping and PDF-clause mapping are maintained in [`integration-test-plan.md`](integration-test-plan.md) so that coverage is reviewed in one authoritative matrix.
+
+Results for the current release candidate are recorded in [`test-report.md`](test-report.md).

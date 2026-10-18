@@ -207,6 +207,8 @@ Run the complete release gate, including Compose validation, every image build, 
 make verify
 ```
 
+The latest recorded results, runtime versions, clean-start lineage, browser matrix, and PDF inspection are in the [`release acceptance report`](docs/test-report.md).
+
 The enforced minimum is 80% line coverage and 70% branch coverage for each tested service. The Portal, Python services, and Java service fail their builds when the configured thresholds are missed.
 
 Useful focused commands are:
@@ -276,5 +278,6 @@ make smoke
 | [`docs/data-schema.md`](docs/data-schema.md) | PostgreSQL schemas, model registry, numeric contracts, and lineage |
 | [`docs/e2e-test-plan.md`](docs/e2e-test-plan.md) | User and live-system acceptance cases |
 | [`docs/integration-test-plan.md`](docs/integration-test-plan.md) | Service tests and requirement traceability matrix |
+| [`docs/test-report.md`](docs/test-report.md) | Evidence and outstanding delivery items for the current release candidate |
 | [`contracts/openapi/`](contracts/openapi/) | Reviewed OpenAPI 3.1 snapshots for all three backends |
 | [`requirements/`](requirements/) | Authoritative PDF and supplied CSV fixtures |

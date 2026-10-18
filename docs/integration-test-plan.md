@@ -242,3 +242,5 @@ Integration verification is complete when:
 - generated CSV and PDF exports were parsed, and every PDF page was rendered for visual inspection;
 - coverage thresholds and the complete `make verify` gate pass; and
 - the report records Git commit, runtime/image versions, dataset and model versions, test seed/clock, test results, generated evidence, and linked defects.
+
+Results for the current release candidate are recorded in [`test-report.md`](test-report.md).
