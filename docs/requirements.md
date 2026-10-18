@@ -2,9 +2,9 @@
 
 ## Purpose
 
-The product must let users estimate individual property values and explore housing market data from one portal. This document describes what the product must do. Technology choices, version rules, implementation details, quality standards, and delivery obligations are defined separately in [`constraints.md`](constraints.md).
+The product must let users estimate individual property values and explore housing market data from one portal. This document describes what the product must do. The runtime component design is defined in [`architecture.md`](architecture.md), technology and quality rules in [`constraints.md`](constraints.md), and the durable business data model in [`data-schema.md`](data-schema.md).
 
-The authoritative source for this document is [`Interview Tasks Fullstack.pdf`](../requirements/Interview%20Tasks%20Fullstack.pdf). An [English Markdown transcription](../requirements/Interview%20Tasks%20Fullstack.md) is available for convenience.
+[`Interview Tasks Fullstack.pdf`](../requirements/Interview%20Tasks%20Fullstack.pdf) is authoritative for the interview task's source requirements. An [English Markdown transcription](../requirements/Interview%20Tasks%20Fullstack.md) is available for convenience. Requirements explicitly described as project decisions or data assumptions supplement the PDF and must not be presented as PDF-mandated scope.
 
 ## Product scope
 
@@ -34,48 +34,50 @@ Both applications must use the same housing price prediction capability.
   - `lot_size`
   - `distance_to_city_center`
   - `school_rating`
-- **REQ-PRED-002:** A valid single-property request must return exactly one predicted price. The response must identify the currency as USD and represent the amount as a fixed two-decimal decimal value.
-- **REQ-PRED-003:** A batch request must contain between 1 and 1,000 property records using the same seven-field schema. The response must contain exactly one prediction for each input record and preserve input order.
+- **REQ-PRED-002:** A valid single-property request whose raw model output satisfies `REQ-PRED-009` must return exactly one predicted price. The response must identify the currency as USD and represent the amount as a fixed two-decimal decimal value.
+- **REQ-PRED-003:** A batch request must contain between 1 and 1,000 property records using the same seven-field schema. A successful response must contain exactly one prediction for each input record and preserve input order; the atomic model-output failure rule in `REQ-PRED-009` applies to the batch as a whole.
 - **REQ-PRED-004:** Model information must be available and must include the model version, feature names in canonical order, one coefficient per feature, the intercept, and the version-matched evaluation metrics defined in `REQ-TRAIN-005`.
 - **REQ-PRED-005:** Service health status must be available.
 - **REQ-PRED-006:** The service interface must expose `predict`, `model-info`, and `health` operations.
 - **REQ-PRED-007:** Invalid prediction requests must be rejected without returning a prediction and must identify the invalid field or batch condition.
 - **REQ-PRED-008:** A type-valid request that violates an advisory domain range must still return a prediction. The response must also return a non-blocking warning that identifies the field, submitted value, advisory range, and reason for the warning.
+- **REQ-PRED-009:** A raw model output that is non-finite, negative, or cannot be represented as `numeric(18,2)` after required rounding must produce a structured `MODEL_OUTPUT_OUT_OF_DOMAIN` error and no prediction or history row. A batch containing such an output must fail atomically and identify the input index; partial batch results are not returned.
 
 ## Model training, evaluation, and testing requirements
 
-- **REQ-TRAIN-001:** The repository must contain a self-contained top-level `training/` workspace. Model preparation must not depend on starting either application backend or the portal.
-- **REQ-TRAIN-002:** The training workspace must provide independent command-line scripts at `training/scripts/train.py`, `training/scripts/evaluate.py`, and `training/scripts/test.py`. The scripts must be independently executable and suitable for automation.
-- **REQ-TRAIN-003:** The training entry point must validate and load `House Price Dataset.csv`, use `price` as the target, exclude `id` from the model inputs, train on the seven fields in `REQ-PRED-001`, and produce a loadable model artifact.
-- **REQ-TRAIN-004:** Model evaluation must use a shuffled 80/20 train/evaluation split with random seed `42`. Metrics must be calculated from predictions on the held-out evaluation partition rather than rows used to fit the evaluated model.
+The PDF requires a trained regression model and performance metrics but does not prescribe the training workflow below. This section is a project decision that makes the model, dataset lineage, and evaluation reproducible without adding a training dashboard.
+
+- **REQ-TRAIN-001:** The repository must contain a self-contained top-level `training/` workspace. It may connect directly to PostgreSQL but must not depend on starting either application backend or the portal.
+- **REQ-TRAIN-002:** The training workspace must provide independent command-line scripts at `training/scripts/export_dataset.py`, `training/scripts/train.py`, `training/scripts/evaluate.py`, and `training/scripts/publish.py`. The scripts must be independently executable and suitable for automation.
+- **REQ-TRAIN-003:** Dataset export must use a read-only database role, require an explicit central `dataset_version_id`, select every valid labelled row in stable `source_id` order, and write an immutable CSV snapshot plus snapshot metadata under `training/data/snapshots/`. The snapshot must retain `source_id` for lineage, use `price` as the target, exclude `source_id` from model inputs, and contain the seven fields in `REQ-PRED-001`.
+- **REQ-TRAIN-004:** The training workspace must split the exported snapshot locally using a shuffled 80/20 train/evaluation split with random seed `42`. Metrics must be calculated from predictions on the held-out evaluation partition rather than rows used to fit the evaluated model. The exact record membership must be saved with the training artifacts; split membership is not business data and must not be written to the central dataset tables.
 - **REQ-TRAIN-005:** Evaluation must report the following regression metrics:
   - mean absolute error (MAE), expressed in USD;
   - root mean squared error (RMSE), expressed in USD;
   - coefficient of determination (R²);
   - mean absolute percentage error (MAPE), expressed as a percentage.
 
-  The evaluation output must include each metric value together with the total, training, and evaluation row counts and the random seed. MAE, RMSE, and MAPE must be displayed to two decimal places. R² must retain at least four decimal places so that model quality is not hidden by display rounding.
+  The evaluation output must include each metric value together with the central dataset version, exported snapshot fingerprint, total, training, and evaluation row counts, and random seed. MAE, RMSE, and MAPE must be displayed to two decimal places. R² must retain at least four decimal places so that model quality is not hidden by display rounding.
 - **REQ-TRAIN-006:** Evaluation must run a mean-target baseline using the same training and evaluation partitions. A model is eligible for publication only when it outperforms that baseline on MAE, RMSE, and MAPE and its held-out evaluation results satisfy all of these acceptance thresholds:
   - MAE no greater than USD 15,000.00;
   - RMSE no greater than USD 20,000.00;
   - R² no lower than 0.9000;
   - MAPE no greater than 7.50%.
-- **REQ-TRAIN-007:** After evaluation passes, the production model artifact must be fitted on all valid labelled rows in the supplied training dataset.
-- **REQ-TRAIN-008:** A successful training run must publish these machine-readable, version-matched artifacts under `training/artifacts/` for use by other programs:
+- **REQ-TRAIN-007:** After evaluation passes, the production model artifact must be fitted on all valid labelled rows in the exported immutable snapshot.
+- **REQ-TRAIN-008:** A completed evaluation must publish version-matched `split-manifest.json` and `metrics.json` files under `training/runs/<training-run-id>/`. An accepted run must additionally publish these model artifacts under `training/artifacts/<model-version>/` for use by other programs:
   - `model.joblib`, the serialized model;
-  - `model-metadata.json`, containing the model version, model type, target name, canonical feature names and order, training timestamp, dependency versions, dataset fingerprint, coefficients, and intercept;
-  - `metrics.json`, containing the protocol, baseline results, acceptance status, and results required by `REQ-TRAIN-004` through `REQ-TRAIN-006`.
-- **REQ-TRAIN-009:** The model service's `model-info` operation must read coefficients, metadata, and metrics produced by the training workflow. It must not maintain a separate manually copied set of model information.
-- **REQ-TRAIN-010:** The model-testing script must load the produced model artifact, validate the inference schema, run predictions for every row in `Test Data For Prediction.csv`, verify that the output count matches the input count and that every result is finite, and write `training/artifacts/test-predictions.csv`. It must not report accuracy metrics from this file because the file contains no actual `price` values.
-- **REQ-TRAIN-011:** The training workspace must include `training/README.md`, documenting setup, commands, source data, field meanings and units, validation rules, reproducibility controls, output artifacts and schemas, metric definitions and acceptance thresholds, and how the model service consumes the artifacts.
-- **REQ-TRAIN-012:** Every script must return a non-zero exit status on invalid data, failed evaluation, an unreadable artifact, or an inference-contract failure. A failed run must not publish partial artifacts as a valid model version.
+  - `model-metadata.json`, containing the training-run and model versions, central dataset version and fingerprints, snapshot fingerprint, model type, target name, canonical feature names and order, training timestamp, dependency versions, Git commit, coefficients, and intercept.
+- **REQ-TRAIN-009:** The model service must resolve the active model from the PostgreSQL model registry, verify and load the registered model and metadata artifacts, and join the linked database evaluation record for `model-info`. It must not maintain a separate manually copied set of coefficients, metadata, or metrics.
+- **REQ-TRAIN-010:** The training system must persist every training-run stage and status in PostgreSQL. Every completed evaluation, including a model rejected by the acceptance thresholds, must persist its evaluation metrics, baseline metrics, acceptance result, source dataset version, snapshot fingerprint, artifact locations and fingerprints, and Git commit. Every registered model must additionally persist its model version and lifecycle status. Model binaries and generated JSON files remain filesystem artifacts and must not be stored as database binary objects.
+- **REQ-TRAIN-011:** The training workspace must include `training/README.md`, documenting database access, snapshot export, commands, field meanings and units, validation rules, local split and reproducibility controls, output artifacts and schemas, registry writes, metric definitions and acceptance thresholds, and how the model service consumes the published model.
+- **REQ-TRAIN-012:** Every script must return a non-zero exit status on invalid data, failed export, failed evaluation, an unreadable artifact, or a registry failure. A run record must be created before export begins, and every failed run must end as `FAILED` without publishing partial artifacts or replacing the active model version. If PostgreSQL is temporarily unavailable when the failure occurs, the durable local run manifest must remain pending and block publication until the failure state is reconciled to the registry. Candidate activation is a later lifecycle operation: an activation failure must roll back without changing the active model, leave the accepted candidate and successful training run intact, and return a non-zero publication status.
 
 ## Data contract and domain assumptions
 
 The source PDF does not define units or currency. The following conventions are project assumptions inferred from the supplied data and must be used consistently unless authoritative requirements replace them.
 
-- **REQ-DATA-001:** `House Price Dataset.csv` is the labelled training and market-analysis dataset. Its `id` column is a source-record identifier, its `price` column is the training target, and the remaining seven columns are model inputs. Neither `id` nor `price` is a prediction-request field.
-- **REQ-DATA-002:** `Test Data For Prediction.csv` is an unlabelled inference fixture containing exactly the seven model inputs. It must not be used as training data or as actual-price market data.
+- **REQ-DATA-001:** `House Price Dataset.csv` is the labelled seed source for the versioned central housing dataset used by training and market analysis. Database initialization SQL must preload its 50 rows as the initial immutable dataset version. Its `id` column is a source-record identifier, its `price` column is the training target, and the remaining seven columns are model inputs. Neither `id` nor `price` is a prediction-request field.
+- **REQ-DATA-002:** `Test Data For Prediction.csv` is an unlabelled Web/API demonstration fixture containing exactly the seven model inputs. It must not be preloaded into the central dataset, used as training or evaluation data, or treated as actual-price market data. When its rows are submitted through the estimator, successful predictions follow the same history-persistence rules as other user inputs.
 - **REQ-DATA-003:** Feature meanings and units are:
   - `square_footage`: interior floor area in square feet (sq. ft.);
   - `bedrooms`: whole-number bedroom count;
@@ -127,5 +129,5 @@ The source PDF does not define units or currency. The following conventions are 
 
 ## Source files
 
-- [`House Price Dataset.csv`](../requirements/House%20Price%20Dataset.csv) is the supplied labelled dataset.
-- [`Test Data For Prediction.csv`](../requirements/Test%20Data%20For%20Prediction.csv) is the supplied unlabelled inference fixture.
+- [`House Price Dataset.csv`](../requirements/House%20Price%20Dataset.csv) is the source for the initial database seed migration and is not read directly during normal training or market requests.
+- [`Test Data For Prediction.csv`](../requirements/Test%20Data%20For%20Prediction.csv) is an unlabelled Web/API demonstration fixture and is not part of database initialization.
