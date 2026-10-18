@@ -12,6 +12,7 @@ from housing_training import evaluating, exporting, failure, publishing, trainin
 from housing_training.dataset import canonical_snapshot_bytes
 from housing_training.io_utils import read_json
 from housing_training.settings import Settings
+from housing_training.state import create_state, save_state
 
 RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
 SECOND_RUN_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -68,7 +69,10 @@ class FakeRegistry:
         return self.metadata, self.rows
 
     def run(self, run_id: UUID) -> dict[str, Any]:
-        return self.runs[run_id]
+        try:
+            return self.runs[run_id]
+        except KeyError:
+            raise ValueError(f"training run {run_id} was not found") from None
 
     def advance_run(
         self, run_id: UUID, revision: int, next_stage: str, details: dict[str, Any]
@@ -216,3 +220,58 @@ def test_failure_remains_pending_when_registry_cannot_be_reached(
     persisted = read_json(config.run_root / str(RUN_ID) / "run-state.json")
     assert persisted["pending_registry_operation"] == "FAIL_RUN"
     assert persisted["run_status"] == "REGISTRY_RECONCILIATION_REQUIRED"
+
+
+@pytest.mark.parametrize("registry_row_exists", [False, True])
+def test_pending_failure_is_idempotently_reconciled_before_work_can_continue(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    registry_row_exists: bool,
+) -> None:
+    config = settings(tmp_path)
+    registry = FakeRegistry()
+    if registry_row_exists:
+        registry.start_run(RUN_ID, DATASET_ID, config.git_commit_sha)
+    install_registry(monkeypatch, registry)
+    state = create_state(
+        config.run_root, RUN_ID, DATASET_ID, config.git_commit_sha
+    )
+    state.update(
+        pending_registry_operation="FAIL_RUN",
+        run_status="REGISTRY_RECONCILIATION_REQUIRED",
+        failure={"summary": "ValueError: broken input"},
+    )
+    save_state(config.run_root, RUN_ID, state)
+
+    assert failure.reconcile_pending_failure(config, RUN_ID) is True
+    assert failure.reconcile_pending_failure(config, RUN_ID) is False
+    persisted = read_json(config.run_root / str(RUN_ID) / "run-state.json")
+    assert persisted["run_status"] == "FAILED"
+    assert persisted["pending_registry_operation"] == "NONE"
+    assert registry.runs[RUN_ID]["failure_summary"] == "ValueError: broken input"
+
+
+@pytest.mark.parametrize("registry_status", ["FAILED", "SUCCEEDED"])
+def test_failure_reconciliation_handles_terminal_registry_states(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    registry_status: str,
+) -> None:
+    config = settings(tmp_path)
+    registry = FakeRegistry()
+    registry.start_run(RUN_ID, DATASET_ID, config.git_commit_sha)
+    registry.runs[RUN_ID]["run_status"] = registry_status
+    install_registry(monkeypatch, registry)
+    state = create_state(config.run_root, RUN_ID, DATASET_ID, config.git_commit_sha)
+    state.update(
+        pending_registry_operation="FAIL_RUN",
+        run_status="REGISTRY_RECONCILIATION_REQUIRED",
+        failure={"summary": "ValueError: broken input"},
+    )
+    save_state(config.run_root, RUN_ID, state)
+
+    if registry_status == "FAILED":
+        assert failure.reconcile_pending_failure(config, RUN_ID) is True
+    else:
+        with pytest.raises(RuntimeError, match="registry status SUCCEEDED"):
+            failure.reconcile_pending_failure(config, RUN_ID)

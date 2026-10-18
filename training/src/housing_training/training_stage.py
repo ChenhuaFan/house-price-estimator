@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from .artifacts import atomic_joblib_dump, relative_path
 from .constants import RANDOM_SEED, TRAIN_RATIO
 from .dataset import arrays, load_snapshot
-from .failure import record_failure
+from .failure import reconcile_pending_failure, record_failure
 from .io_utils import atomic_write_json, sha256_file
 from .registry import Registry
 from .settings import Settings
@@ -20,6 +20,8 @@ from .state import load_state, save_state, sync_state
 def train(settings: Settings, run_id: UUID) -> Path:
     registry = Registry(settings.database_url)
     state = load_state(settings.run_root, run_id)
+    if reconcile_pending_failure(settings, run_id, state):
+        raise RuntimeError("the previous failure was reconciled; start a new training run")
     try:
         run = registry.run(run_id)
         if run["run_stage"] != "SPLITTING" or run["run_status"] != "RUNNING":

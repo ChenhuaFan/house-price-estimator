@@ -10,7 +10,7 @@ from .artifacts import relative_path
 from .constants import ACCEPTANCE_POLICY_VERSION, RANDOM_SEED
 from .dataset import arrays, load_snapshot
 from .evaluation_policy import evaluate_predictions
-from .failure import record_failure
+from .failure import reconcile_pending_failure, record_failure
 from .io_utils import atomic_write_json, read_json, sha256_file
 from .registry import Registry
 from .settings import Settings
@@ -20,6 +20,8 @@ from .state import load_state, now_iso, save_state, sync_state
 def evaluate(settings: Settings, run_id: UUID) -> bool:
     registry = Registry(settings.database_url)
     state = load_state(settings.run_root, run_id)
+    if reconcile_pending_failure(settings, run_id, state):
+        raise RuntimeError("the previous failure was reconciled; start a new training run")
     try:
         run = registry.run(run_id)
         if run["run_stage"] != "EVALUATING" or run["run_status"] != "RUNNING":
