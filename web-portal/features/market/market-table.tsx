@@ -16,7 +16,17 @@ const columns: Array<{ key: string; label: string; render: (record: PropertyReco
   { key: "price", label: "Actual price", render: (item) => formatMoney(item.price) },
 ];
 
-export function MarketTable({ analysis, sort, direction }: { analysis: MarketAnalysis; sort: string; direction: string }): React.ReactElement {
+export function MarketTable({
+  analysis,
+  sort,
+  direction,
+  disabled = false,
+}: {
+  analysis: MarketAnalysis;
+  sort: string;
+  direction: string;
+  disabled?: boolean;
+}): React.ReactElement {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pages = Math.max(1, Math.ceil(analysis.matchingCount / analysis.size));
@@ -45,7 +55,7 @@ export function MarketTable({ analysis, sort, direction }: { analysis: MarketAna
         <table className="data-table">
           <thead><tr>{columns.map((column) => (
             <th key={column.key} scope="col" aria-sort={sort === column.key ? (direction === "desc" ? "descending" : "ascending") : "none"}>
-              <button type="button" className="min-h-11 cursor-pointer text-left font-inherit underline decoration-transparent underline-offset-4 hover:decoration-current" onClick={() => sortBy(column.key)}>
+              <button type="button" className="min-h-11 cursor-pointer text-left font-inherit underline decoration-transparent underline-offset-4 hover:decoration-current" disabled={disabled} onClick={() => sortBy(column.key)}>
                 {column.label}{sort === column.key ? <span aria-hidden="true"> {direction === "desc" ? "↓" : "↑"}</span> : null}
               </button>
             </th>
@@ -58,9 +68,9 @@ export function MarketTable({ analysis, sort, direction }: { analysis: MarketAna
         </table>
       </div>
       <div className="mt-5 flex items-center justify-between gap-3">
-        <button type="button" className="button-secondary" disabled={analysis.page <= 0} onClick={() => navigate({ page: String(analysis.page - 1) })}>Previous page</button>
+        <button type="button" className="button-secondary" disabled={disabled || analysis.page <= 0} onClick={() => navigate({ page: String(analysis.page - 1) })}>Previous page</button>
         <span className="text-sm text-slate-600">Page {analysis.page + 1} / {pages}</span>
-        <button type="button" className="button-secondary" disabled={analysis.page + 1 >= pages} onClick={() => navigate({ page: String(analysis.page + 1) })}>Next page</button>
+        <button type="button" className="button-secondary" disabled={disabled || analysis.page + 1 >= pages} onClick={() => navigate({ page: String(analysis.page + 1) })}>Next page</button>
       </div>
     </section>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { MarketAnalysis, WhatIfResponse } from "@/lib/api/types";
 import { formatMoney, formatNumber } from "@/lib/format";
@@ -20,6 +20,7 @@ export function MarketDashboard({
   filterValues: MarketFilterValues;
 }): React.ReactElement {
   const searchParams = useSearchParams();
+  const [interactive, setInteractive] = useState(false);
   const [whatIf, setWhatIf] = useState<WhatIfResponse | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<PortalApiError | null>(null);
@@ -30,6 +31,8 @@ export function MarketDashboard({
     query.set("datasetVersionId", analysis.datasetVersionId);
     return query;
   }, [searchParams, analysis.datasetVersionId]);
+
+  useEffect(() => setInteractive(true), []);
 
   async function exportReport(): Promise<void> {
     setExporting(true);
@@ -45,13 +48,13 @@ export function MarketDashboard({
 
   return (
     <div className="space-y-6">
-      <FilterForm values={filterValues} />
+      <FilterForm values={filterValues} disabled={!interactive} />
       <section aria-labelledby="summary-heading">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div><p className="eyebrow">Current segment</p><h2 id="summary-heading" className="mt-1 text-2xl font-semibold text-slate-950">Market summary</h2></div>
           <div className="flex flex-wrap gap-2">
             <a className="button-secondary" href={`/api/market/exports/data.csv?${exportQuery}`} download>Download CSV</a>
-            <button type="button" className="button-primary" disabled={exporting} onClick={exportReport}>{exporting ? "Generating PDF…" : "Download PDF"}</button>
+            <button type="button" className="button-primary" disabled={!interactive || exporting} onClick={exportReport}>{exporting ? "Generating PDF…" : "Download PDF"}</button>
           </div>
         </div>
         {exportError ? <div className="mt-4"><StatusMessage tone="error" title="Export failed" live>{exportError.message}</StatusMessage></div> : null}
@@ -66,8 +69,8 @@ export function MarketDashboard({
         </div>
       </section>
       <MarketCharts priceByBedrooms={analysis.charts.average_price_by_bedrooms} countBySchoolBand={analysis.charts.property_count_by_school_band} />
-      <MarketTable analysis={analysis} sort={filterValues.sort || "source_id"} direction={filterValues.direction || "asc"} />
-      <WhatIfForm onResult={setWhatIf} />
+      <MarketTable analysis={analysis} sort={filterValues.sort || "source_id"} direction={filterValues.direction || "asc"} disabled={!interactive} />
+      <WhatIfForm onResult={setWhatIf} disabled={!interactive} />
       <p className="break-all text-xs text-slate-500">Dataset {analysis.datasetVersionId} · fingerprint {analysis.datasetContentSha256}</p>
     </div>
   );

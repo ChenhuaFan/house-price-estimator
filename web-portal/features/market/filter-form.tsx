@@ -16,7 +16,13 @@ const ranges = [
 
 export type MarketFilterValues = Record<string, string>;
 
-export function FilterForm({ values }: { values: MarketFilterValues }): React.ReactElement {
+export function FilterForm({
+  values,
+  disabled = false,
+}: {
+  values: MarketFilterValues;
+  disabled?: boolean;
+}): React.ReactElement {
   const router = useRouter();
   const [draft, setDraft] = useState(values);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +68,7 @@ export function FilterForm({ values }: { values: MarketFilterValues }): React.Re
           <h2 id="filter-heading" className="mt-1 text-2xl font-semibold text-slate-950">Filter the market</h2>
           <p className="mt-1 text-sm text-slate-600">Minimum and maximum values are inclusive. Leave fields blank to include the full range.</p>
         </div>
-        <button type="button" className="button-secondary" onClick={reset} disabled={pending}>Reset filters</button>
+        <button type="button" className="button-secondary" onClick={reset} disabled={disabled || pending}>Reset filters</button>
       </div>
       {error ? <div className="status-message status-error mt-4" role="alert">{error}</div> : null}
       <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -73,18 +79,18 @@ export function FilterForm({ values }: { values: MarketFilterValues }): React.Re
             <div className="grid grid-cols-2 gap-2">
               <label className="field-group text-xs font-semibold text-slate-600">
                 Minimum
-                <input id={`filter-${range.min}`} className="field-input" type="number" step={range.step} value={draft[range.min] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, [range.min]: event.target.value }))} />
+                <input id={`filter-${range.min}`} className="field-input" type="number" step={range.step} value={draft[range.min] ?? ""} disabled={disabled || pending} onChange={(event) => setDraft((current) => ({ ...current, [range.min]: event.target.value }))} />
               </label>
               <label className="field-group text-xs font-semibold text-slate-600">
                 Maximum
-                <input className="field-input" type="number" step={range.step} value={draft[range.max] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, [range.max]: event.target.value }))} />
+                <input className="field-input" type="number" step={range.step} value={draft[range.max] ?? ""} disabled={disabled || pending} onChange={(event) => setDraft((current) => ({ ...current, [range.max]: event.target.value }))} />
               </label>
             </div>
           </fieldset>
         ))}
       </div>
       <div className="mt-5 flex items-center gap-3">
-        <button type="submit" className="button-primary" disabled={pending}>{pending ? "Applying…" : "Apply filters"}</button>
+        <button type="submit" className="button-primary" disabled={disabled || pending}>{pending ? "Applying…" : "Apply filters"}</button>
         {pending ? <span role="status" className="text-sm text-slate-600">Loading the selected segment…</span> : null}
       </div>
     </form>

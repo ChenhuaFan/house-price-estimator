@@ -37,11 +37,11 @@ test.describe("unified portal user journeys", () => {
     await expect(page.getByRole("heading", { level: 1, name: /Explore the evidence/ })).toBeVisible();
   });
 
-  test("supports keyboard navigation and reduced motion", async ({ page }) => {
+  test("supports keyboard navigation and reduced motion", async ({ browserName, page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/estimator");
 
-    await page.keyboard.press("Tab");
+    await page.keyboard.press(browserName === "webkit" ? "Alt+Tab" : "Tab");
     const skipLink = page.getByRole("link", { name: "Skip to main content" });
     await expect(skipLink).toBeFocused();
     await expect(skipLink).toBeVisible();
@@ -211,14 +211,21 @@ test.describe("unified portal user journeys", () => {
     expect(Number(countText?.split(" ")[0])).toBeGreaterThan(0);
     expect(Number(countText?.split(" ")[0])).toBeLessThan(50);
 
-    await page.getByRole("button", { name: "Actual price" }).click();
-    await expect(page).toHaveURL(/sort=price/);
-    await page.getByRole("button", { name: /Actual price/ }).click();
-    await expect(page).toHaveURL(/direction=desc/);
+    const priceSort = page.getByRole("button", { name: /Actual price/ });
+    await expect.poll(async () => {
+      if (!page.url().includes("sort=price")) await priceSort.click();
+      return page.url();
+    }).toMatch(/sort=price/);
+    await expect.poll(async () => {
+      if (!page.url().includes("direction=desc")) await priceSort.click();
+      return page.url();
+    }).toMatch(/direction=desc/);
     const deepLink = page.url();
     await page.goto(deepLink);
     await expect(page.locator("#filter-priceMin")).toHaveValue("300000");
 
+    await page.getByRole("button", { name: "Run what-if" }).click();
+    await expect(page.locator("#what-if-square_footage-error")).toHaveText("Enter a value.");
     await fillProperty(page, "what-if", propertyB);
     await page.getByRole("button", { name: "Run what-if" }).click();
     await expect(page.getByText(/Estimated value · model/)).toBeVisible();

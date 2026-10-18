@@ -15,7 +15,13 @@ import {
   type PropertyErrors,
 } from "@/lib/validation/property";
 
-export function WhatIfForm({ onResult }: { onResult: (value: WhatIfResponse) => void }): React.ReactElement {
+export function WhatIfForm({
+  onResult,
+  disabled = false,
+}: {
+  onResult: (value: WhatIfResponse) => void;
+  disabled?: boolean;
+}): React.ReactElement {
   const [draft, setDraft] = useState<PropertyDraft>(emptyPropertyDraft);
   const [errors, setErrors] = useState<PropertyErrors>({});
   const [result, setResult] = useState<WhatIfResponse | null>(null);
@@ -50,12 +56,12 @@ export function WhatIfForm({ onResult }: { onResult: (value: WhatIfResponse) => 
       <h2 id="what-if-heading" className="mt-1 text-2xl font-semibold text-slate-950">What-if estimate</h2>
       <p className="mt-1 max-w-3xl text-sm text-slate-600">Change property characteristics and estimate a value without adding a record to estimator history.</p>
       <form onSubmit={submit} noValidate className="mt-6">
-        <fieldset disabled={pending}>
+        <fieldset disabled={disabled || pending}>
           <legend className="sr-only">What-if property characteristics</legend>
           <PropertyFields
             draft={draft}
             errors={errors}
-            disabled={pending}
+            disabled={disabled || pending}
             onChange={(name: PropertyFieldName, value: string) => {
               setDraft((current) => ({ ...current, [name]: value }));
               setErrors((current) => ({ ...current, [name]: undefined }));
@@ -64,7 +70,7 @@ export function WhatIfForm({ onResult }: { onResult: (value: WhatIfResponse) => 
             idPrefix="what-if"
           />
         </fieldset>
-        <button type="submit" className="button-primary mt-5" disabled={pending}>{pending ? "Calculating…" : "Run what-if"}</button>
+        <button type="submit" className="button-primary mt-5" disabled={disabled || pending}>{pending ? "Calculating…" : "Run what-if"}</button>
       </form>
       {error ? <div className="mt-5"><StatusMessage tone="error" title="What-if estimate unavailable" live>{error.message}{error.correlationId ? <span className="block text-xs">Reference: {error.correlationId}</span> : null}</StatusMessage></div> : null}
       {result ? (
