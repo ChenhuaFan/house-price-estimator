@@ -1,460 +1,417 @@
-# Frontend technical design
+# Task 2 frontend design
 
-## 1. Status and scope
+## 1. Purpose
 
-| Item | Value |
-| --- | --- |
-| Status | Proposed target design |
-| Date | 2026-10-19 |
-| Project | `web-portal` |
-| Product scope | Multi-Application Next.js Portal |
-| Applications | Property Value Estimator and Property Market Analysis |
-| Market API baseline | `docs/openapi/market-service-v2.yaml`, OpenAPI 3.1, version `2.0.0` |
+Task 2 is a unified Next.js portal with two independent frontend applications:
 
-This document defines the target frontend behaviour, component boundaries, data flow, file structure, motion rules, and acceptance criteria. It guides the migration from the current v1 portal to market API v2. It does not describe the current implementation as complete.
+1. **App 1 - Property Value Estimator**, backed by Python.
+2. **App 2 - Property Market Analysis**, backed by Java.
 
-Pages 2-3 of `requirements/Interview Tasks Fullstack.pdf` define the product and technical requirements for the Multi-Application Next.js Portal. The portal contains **App 1: Property Value Estimator** and **App 2: Property Market Analysis**. The numbers 2 and 3 in the PDF are entries under Portal Structure Requirements, not separate tasks. `docs/openapi/market-service-v2.yaml` is the source of truth for the Property Market Analysis API. If a narrative document differs from the OpenAPI contract on a field, status code, or data shape, the frontend must follow OpenAPI. For example, v2 defines `StatisticsGroup.values` as `StatisticValue[]`; the frontend must not treat it as a keyed object based on an example elsewhere.
+Both applications use the machine-learning model from Task 1. They share navigation, layout, design tokens, accessibility standards, loading conventions, and error presentation. Their business state and backend integrations remain separate.
 
-### 1.1 Goals
+This is a greenfield frontend design. It defines the product behaviour and the intended Next.js architecture without assuming an existing frontend implementation.
 
-1. Host two independent applications in one Next.js App Router portal with a shared visual system.
-2. Use React Server Components (RSC) to load the first screen of business data, avoiding a second loading waterfall after hydration.
-3. Keep the existing smart component / dummy component pattern while separating server orchestration, browser interaction, and presentation.
-4. Fully support market API v2: split reads, immutable dataset versions, cursor pagination, exact decimals, and asynchronous exports.
-5. Provide responsive layouts, WCAG 2.2 AA interactions, recoverable errors, clear loading states, and observable behaviour suitable for a live demonstration.
-6. Use Motion for restrained, optional state transitions. Motion must never be the only way the interface communicates information or state.
+## 2. Sources and design authority
 
-### 1.2 Non-goals
+The design uses these sources, in order:
 
-- The browser will not calculate full-dataset statistics or duplicate backend business validation.
-- The portal will not add sign-in, accounts, multi-tenancy, or persistent user preferences.
-- The property table will not support arbitrary page jumps; v2 uses keyset cursors.
-- The property table will not support multi-column sorting; v2 accepts at most one public sort field.
-- The portal will not expose a dataset picker. V2 has no endpoint for listing dataset versions. It will display and automatically pin the version resolved by the service.
-- The frontend will not generate CSV or PDF files. It will create, monitor, cancel, and download server-side export jobs.
+1. `requirements/Interview Tasks Fullstack.pdf`, pages 2-3, defines the Task 2 product and technical requirements.
+2. `docs/openapi/market-service-v2.yaml` defines the App 2 API contract.
+3. Motion's official React documentation defines the animation APIs and reduced-motion behaviour.
 
-## 2. Product shape
+The PDF's numbered entries “2 - App 1” and “3 - App 2” are sections inside Task 2. They are not separate tasks.
+
+When prose and OpenAPI differ on App 2 request fields, response fields, limits, or status codes, OpenAPI takes precedence. The Python Estimator API is not specified in the supplied market contract; this document therefore describes the capabilities that its frontend contract must provide rather than inventing a second OpenAPI specification.
+
+## 3. Product structure
 
 ```text
 Housing Intelligence Portal
-├── Property Value Estimator  /estimator
-│   ├── Property form
-│   ├── Prediction result: summary, table, and chart
+├── /estimator     App 1 - Property Value Estimator
+│   ├── Property input
+│   ├── Prediction result
 │   ├── Estimate history
-│   └── Side-by-side comparison
-└── Property Market Analysis  /market
-    ├── Filters and active-filter summary
-    ├── Metric cards and market visualisations
-    ├── Cursor-paginated property table
+│   └── Property comparison
+└── /market        App 2 - Property Market Analysis
+    ├── Market overview
+    ├── Segment filters
+    ├── Visual analysis
+    ├── Property explorer
     ├── What-if analysis
-    └── Asynchronous export centre
+    └── Export centre
 ```
 
-The shared layout owns the brand, primary navigation, skip link, global error boundary, loading style, and design tokens. The two applications have separate business state, backends, and URL spaces. They do not share a feature store.
+The root route redirects to `/estimator`. A persistent portal layout contains the product identity, links to both applications, a skip link, a main landmark, and a small model-output disclaimer. Navigation uses real links so that URLs remain bookmarkable and browser history works normally.
 
-## 3. App 1: Property Value Estimator
+## 4. App 1 - Property Value Estimator
 
-### 3.1 Features
+### 4.1 Functional scope
 
-| ID | Feature | Design | Requirement |
-| --- | --- | --- | --- |
-| E1 | Seven-field estimate form | Collect `square_footage`, `bedrooms`, `bathrooms`, `year_built`, `lot_size`, `distance_to_city_center`, and `school_rating`. Labels, units, examples, and constraints remain visible. | App 1 frontend i |
-| E2 | Client-side validation | Validate required values, numeric syntax, integer/decimal precision, limits, and related ranges before submission. Map backend `fields[]` violations back to the matching controls. | App 1 frontend ii; State Management & Data Flow b |
-| E3 | Two forms of prediction output | Show the same result as an exact data table and a lightweight chart. The table retains price, inputs, model version, and creation time; the chart supports quick comparison. | App 1 frontend iii |
-| E4 | Anonymous estimate history | Load the newest 20 estimates in the initial RSC response, then use an opaque cursor for “Load more”. Users can inspect, delete, or clear history; destructive actions require confirmation. | App 1 frontend iv |
-| E5 | Side-by-side comparison | Select 2-4 history records and compare inputs, price differences, and normalised bars. Selection belongs to the current page session and does not create another backend entity. | App 1 frontend v |
-| E6 | Safe retries | Use a stable request/idempotency key when creating an estimate. Reuse it only when retrying the same failed input; generate a new key after the input changes. | API communication and error-state requirement |
-| E7 | Demonstration presets | Provide two or three frontend-only examples such as “Urban apartment” and “Family house”. A preset fills the form but never submits it automatically. | Additional frontend feature |
+| ID | Function | Product behaviour |
+| --- | --- | --- |
+| E1 | Property input form | Collect every model field: square footage, bedrooms, bathrooms, year built, lot size, distance to city centre, and school rating. Every control has a visible label, unit, example, and constraint. |
+| E2 | Client-side validation | Validate required fields, number syntax, whole-number fields, decimal precision, and permitted ranges before sending a request. Show an error summary and field-level messages. Server validation remains authoritative. |
+| E3 | Prediction summary | Present predicted price, currency, model version, and submission time. State clearly that the result is an estimate rather than an appraisal or financial recommendation. |
+| E4 | Tabular result | Show the seven submitted values and prediction metadata in an exact, readable table. This is the accessible source of truth for the result. |
+| E5 | Result visualisation | Show predicted price in a compact bar chart. Once history exists, the chart can compare the current estimate with selected previous estimates. It never replaces the table. |
+| E6 | Estimate history | Show previous estimates, newest first, with enough property details to identify each entry. History is loaded with the first server render and supports bounded pagination. |
+| E7 | Side-by-side comparison | Let the user select two to four history entries and compare their inputs and predicted prices in aligned columns and charts. |
+| E8 | Reuse as a scenario | A “Use as new scenario” action copies a historical record into the form without submitting it. The user can change one or more values and request a new estimate. |
+| E9 | Example presets | Optional presets, such as “City apartment” and “Family house”, populate the form for a live demonstration. They are labelled examples and never submit automatically. |
 
-E7 requires no new API and does not change the model input. Presets must be labelled as examples and must not imply market advice or a guaranteed valuation.
+E8 and E9 are additional frontend features. They use existing model fields and require no new analytical capability.
 
-### 3.2 User actions and black-box behaviour
+### 4.2 Python frontend contract needs
 
-| User action or external condition | Observable behaviour |
+The Estimator frontend needs the Python backend to provide these capabilities through its own reviewed OpenAPI contract:
+
+- create one estimate from all model fields;
+- return predicted price, currency, model version, canonical inputs, and a stable estimate identifier;
+- list the current visitor's previous estimates using bounded pagination; and
+- return structured validation and service errors.
+
+History ownership may be anonymous for an interview demonstration, but it must be isolated by a secure first-party identifier. The browser must not be allowed to choose another visitor's history owner in a request body or URL.
+
+### 4.3 Screen composition
+
+Desktop uses a two-column top section: form on the left and current result on the right. History and comparison sit below. Tablet can keep two columns when space permits. Mobile uses one column in task order: form, result, history, comparison.
+
+The result panel reserves space before a prediction exists. This prevents a large layout jump after submission. History remains visible during a new estimate request.
+
+### 4.4 Black-box acceptance behaviour
+
+| Scenario | Observable result |
 | --- | --- |
-| Open `/estimator` for the first time | The initial response already contains recent history or an explicit empty-history state. The page does not flash an empty table and then start its first history request after hydration. |
-| Submit invalid input | No request is sent. Focus moves to the error summary or first invalid field. A specific correction appears beside the field and is connected with `aria-describedby`. |
-| Submit valid input | The submit control enters a pending state and prevents duplicate submission. Existing history remains readable. On success, the result panel and first history row update. |
-| Receive a prediction | Price, currency, model version, and all seven inputs are visible. The result has both an exact table and a supporting visual chart. |
-| Retry after the response was lost | The same input does not create duplicate history. The user receives the original result or an explicit conflict message. |
-| Load more history | Existing rows remain in place and new rows are appended. When there is no `next_cursor`, the control disappears or becomes disabled and the page says that all records are loaded. |
-| Inspect a history item | The result panel switches to that record without calling the prediction model again. |
-| Select 2-4 records | The comparison area expands and shows field-by-field differences. A fifth selection is blocked with an accessible explanation. |
-| Delete a history item | After confirmation, the row leaves and any comparison selection is updated. If deletion fails, the row remains or is restored and an error appears. |
-| Python or model service is unavailable | Existing history stays readable. Create shows a retryable error and correlation ID; the portal never invents a prediction. |
+| The user opens `/estimator` | The response already includes recent history or a clear empty-history state. The browser does not need a second request to discover the initial state after hydration. |
+| The user submits an empty or invalid form | No prediction request is sent. A focusable error summary appears, focus moves to it or the first invalid control, and each field explains how to correct the value. |
+| The user submits valid details | The submit button shows progress and prevents duplicate activation. Other page content remains usable. |
+| Prediction succeeds | The exact table and chart update from the same response. Price, currency, model version, and all submitted values agree. The new estimate appears at the start of history. |
+| Prediction fails | The entered values remain in the form. The user sees a recoverable message and correlation ID. No fabricated result or partial history row appears. |
+| The user selects history entries | Selecting two entries reveals the comparison. A third and fourth may be added. A fifth selection is blocked with a clear message. |
+| The user removes a selected entry | The comparison updates without re-running the model. Focus remains on a sensible nearby control. |
+| The user selects “Use as new scenario” | The form is populated with that record, the page moves focus to the form heading, and nothing is submitted until the user confirms. |
+| More history is available | “Load more” appends records without removing existing rows. The action disappears or becomes disabled when the final page is reached. |
+| The model service is unavailable | Existing history and comparison remain readable. Only estimate creation reports the dependency failure. |
 
-## 4. App 2: Property Market Analysis
+## 5. App 2 - Property Market Analysis
 
-### 4.1 Features driven by API v2
+### 5.1 API capabilities
 
-| ID | Feature | V2 API | Design |
-| --- | --- | --- | --- |
-| M1 | Market overview | `POST /api/v2/market/statistics/query` | Request multiple ungrouped metrics together: count, average price, minimum price, maximum price, average area, and population standard deviation of price. For an empty set, show `0` for COUNT and `—` for null aggregates. |
-| M2 | Market visualisations | `POST /api/v2/market/statistics/query` | Build charts from grouped statistics, never from the current table page. The first release includes average price by bedroom count and distribution by school rating. High-cardinality fields require fixed-width buckets. |
-| M3 | Segment filters | Properties and statistics | Provide `gte/lte` ranges for the eight filterable dimensions. Submit only when the user selects Apply. The URL stores canonical filters, sort, limit, and dataset version. |
-| M4 | Responsive property table | `GET /api/v2/market/properties` | Request at most 200 records, with a default of 50. Support one sort field and Next/Back cursor navigation. On small screens, use a labelled horizontal scrolling region and preserve table semantics. |
-| M5 | What-if analysis | `POST /api/v2/market/what-if` | Submit one seven-field hypothetical property and show price, model version, and advisory warnings. A what-if failure must not disable the property table or statistics. |
-| M6 | Asynchronous CSV/PDF exports | Export API family | Create an export, poll according to `Retry-After`, display its state, cancel it, download it on success, and regenerate it after expiry. Creation uses `Idempotency-Key`. |
-| M7 | Dataset consistency indicator | All read/export responses | Show a shortened dataset version. The table, statistics, charts, and export must use the same version. Place the query fingerprint in expandable diagnostics rather than presenting it as a filter. |
-| M8 | Active-filter summary | Frontend only | Show submitted filters as removable chips. Removing a chip commits a new URL state and discards the old cursor. |
-| M9 | Insight comparison | Statistics API | Within the current scope, let the user choose one grouping dimension and one metric for a secondary chart. Options come only from the OpenAPI allow-list and results remain capped at 200 groups. |
+| Capability | API operation | Frontend use |
+| --- | --- | --- |
+| Filtered properties | `GET /api/v2/market/properties` | Responsive property table, single-field sorting, and keyset pagination |
+| Aggregate statistics | `POST /api/v2/market/statistics/query` | Metric cards, grouped charts, and market context for what-if results |
+| Create export | `POST /api/v2/market/exports` | Start a durable CSV or PDF export with an Idempotency-Key |
+| Export status | `GET /api/v2/market/exports/{export_id}` | Track Queued, Running, Succeeded, Failed, Cancelled, and Expired jobs |
+| Cancel export | `DELETE /api/v2/market/exports/{export_id}` | Cancel queued/running work or remove completed temporary content |
+| Download export | `GET /api/v2/market/exports/{export_id}/content` | Stream a completed CSV or PDF file |
+| What-if prediction | `POST /api/v2/market/what-if` | Predict one hypothetical property's price using the shared model |
 
-M8 and M9 are additional frontend features enabled by v2. M9 does not accept arbitrary expressions, and `source_id` is not available as a group field.
+### 5.2 Functional scope
 
-### 4.2 User actions and black-box behaviour
+| ID | Function | Product behaviour |
+| --- | --- | --- |
+| M1 | Market overview | Show matching property count, average price, minimum and maximum price, average square footage, and price standard deviation. Request these metrics together. |
+| M2 | Market visualisations | Show average price by bedroom count and property count by school-rating band. Charts use grouped statistics over the full filtered scope, not the current table page. |
+| M3 | Segment filters | Provide minimum/maximum filters for price, square footage, bedrooms, bathrooms, year built, lot size, distance to city centre, and school rating. Filters are applied explicitly rather than on every keystroke. |
+| M4 | Active-filter summary | Show applied filters as removable chips and provide a single Reset action. The summary makes the current segment understandable without reopening the filter panel. |
+| M5 | Property explorer | Show property records in a responsive table with one active sort field. Use Next and Back controls backed by opaque cursors. Do not display arbitrary page numbers. |
+| M6 | What-if analysis | Accept all seven model fields and show predicted price, model version, and advisory warnings. What-if state is independent of the dashboard read state. |
+| M7 | Market context for what-if | Compare the predicted value with the filtered segment's average, minimum, and maximum price. Label the comparison as context, not valuation confidence. |
+| M8 | Export centre | Create CSV or PDF jobs, show live job status, cancel eligible jobs, download completed files, and regenerate expired files. The dashboard remains usable while an export runs. |
+| M9 | Dataset identity | Show a short dataset version in a details area and pin table, statistics, charts, and exports to that version. Display the content hash and query fingerprint only in technical details. |
+| M10 | Guided insight view | Let the user choose one approved grouping dimension and one approved metric for an additional chart. Options come from the OpenAPI allow-list; high-cardinality dimensions require fixed-width buckets. |
 
-| User action or external condition | Observable behaviour |
+M4, M7, M9, and M10 extend the required dashboard without exceeding the v2 contract. They do not introduce free-form queries or client-side full-dataset calculations.
+
+### 5.3 Contract-driven UI rules
+
+#### Dataset consistency
+
+The first property request may omit `dataset_version_id`, allowing the service to resolve the active immutable dataset. The frontend then pins every statistics, pagination, what-if-context, and export request to the returned dataset version. Filter and sort changes keep the same version until the user explicitly refreshes the dataset or a version conflict requires recovery.
+
+#### Decimal values
+
+Money and decimal response fields remain strings in the transport and domain layers. Exact values are never converted to JavaScript floating point and then sent back to the API. A chart adapter may convert bounded display values to numbers, while the original strings remain available for labels, tables, and requests.
+
+#### Sorting and pagination
+
+The table supports one sort expression from the API allow-list. Changing filter, sort, limit, or dataset version clears the cursor. Cursors are opaque and must not be parsed or edited. Back navigation uses browser history or a small stack of previously received cursors.
+
+#### Statistics
+
+The overview sends several metrics in one statistics request. Charts use separate grouped requests after the dataset version is known. The frontend honours the limits of 20 metrics and 200 groups. When an aggregate is null, the UI displays an em dash; COUNT still displays zero.
+
+#### Exports
+
+Export creation returns `202 Accepted`, not a file. The client uses `Location` and `Retry-After`, stops polling in terminal states, pauses polling while the document is hidden, and aborts polling when the export item unmounts. Download uses the streaming content route rather than buffering the whole file as a Blob. PDF details may be bounded to 5,000 rows; the UI states clearly when details are truncated. CSV represents the complete matching selection.
+
+### 5.4 Screen composition
+
+The desktop dashboard uses this order:
+
+1. page title, dataset details, and export action;
+2. compact metric cards;
+3. filter panel and active-filter summary;
+4. two primary charts;
+5. property table;
+6. a sticky what-if panel; and
+7. export centre, shown as a non-blocking drawer or panel.
+
+On mobile, this becomes one column. Filters use an accessible disclosure. What-if follows the table rather than covering it. The table sits inside a labelled horizontal scroll region; no required column disappears solely because the screen is narrow.
+
+### 5.5 Black-box acceptance behaviour
+
+| Scenario | Observable result |
 | --- | --- |
-| Open `/market` for the first time | RSC returns the first property page. Once the portal receives `dataset_version.id`, every statistics and chart request is pinned to it. The page never combines results from different datasets. |
-| Edit filter fields | Charts and the table do not flicker or issue a request for every keystroke. Selecting Apply updates the URL and shows a local pending state. |
-| Apply valid filters | The cursor is cleared. Metrics, charts, and table refresh as one logical view. Existing content stays readable while the new result is pending, but it is visibly marked as updating. |
-| Enter a minimum above its maximum | The browser blocks the request and points to the exact range. If the backend still returns 422, the response maps to the same fields. |
-| Select a sortable column header | Only that column toggles between ascending and descending. `aria-sort` updates and the cursor resets. The interface gives no suggestion that multi-column sorting is available. |
-| Select Next | The portal uses the server-provided `next_cursor`. Back uses browser history or a client-side stack of preceding cursors. There is no arbitrary page-number input. |
-| Refresh or share the URL | Submitted filters, sort, and dataset version are restored. If the cursor does not match the query, the portal retains filters and sort, removes the cursor, and explains that it returned to the first page. |
-| Receive no matching records | Count is 0, other null aggregates show `—`, charts show an empty state, and the table says that no records match. An empty result is not treated as an error. |
-| Run what-if analysis | Only the what-if panel becomes pending. On success it shows the prediction and warnings. A model 503 leaves the rest of the dashboard usable. |
-| Create a CSV or PDF export | A non-blocking export item appears immediately and moves through Queued, Running, and Succeeded or another terminal state. The dashboard remains interactive. |
-| Complete an export | The item shows file type, row count, size, expiry time, and Download. If PDF details were truncated, it states “Showing N of M matching records”; CSV still represents the complete selection. |
-| Cancel an export | A Queued or Running item moves to Cancelling and then Cancelled. The cancel control prevents duplicate actions. |
-| Receive 410 while downloading | The item says that the file expired and offers to regenerate the same selection. The client does not repeatedly request the old URL. |
-| Receive API 429 | The page explains the limit and disables retry for the `Retry-After` countdown. It does not enter a rapid automatic retry loop. |
-| Receive dataset/query 409 | The portal stops using the stale cursor or selection, preserves reusable filters, resolves a new version, and tells the user that the dataset changed. |
+| The user opens `/market` | Initial properties and core market data are loaded by Server Components. The page shows a route-level skeleton while critical data is pending. |
+| The first property response resolves a dataset | Statistics, charts, later pages, and exports use that exact dataset version. The user never sees a dashboard assembled from mixed versions. |
+| The user edits filters | No request is sent for each keystroke. Apply commits valid filters to the URL. Reset removes them. |
+| The user applies filters | The existing dashboard remains readable but is marked updating. The cursor resets, then cards, charts, and the table update to the same scope. |
+| A minimum is greater than its maximum | Client validation blocks Apply and identifies the range. A backend 422 maps to the same controls. |
+| No properties match | Count shows 0, nullable metrics show an em dash, charts show an empty state, and the table says no records match. This is not presented as a system error. |
+| The user sorts a column | That column toggles between ascending and descending, `aria-sort` changes, and pagination returns to the first cursor. |
+| The user selects Next | The client uses `next_cursor`. Back returns to a previous cursor. There is no page-number input or unsupported jump-to-page action. |
+| A cursor no longer matches the query | The page retains valid filters and sort, removes the cursor, returns to the first result set, and explains the recovery. |
+| The user runs what-if | Only the what-if panel becomes busy. A successful result includes warnings and market context. A 503 leaves the rest of the dashboard intact. |
+| The user creates an export | A job item appears immediately with Queued or Running status. The rest of the page remains interactive. |
+| An export succeeds | The item shows file type, row count, file size, expiry time, and a Download action. PDF truncation is stated explicitly. |
+| The user cancels an export | The item enters a cancellation state, disables duplicate cancellation, and ends as Cancelled or the server-reported terminal state. |
+| Export content has expired | The item shows Expired and offers Regenerate. It does not repeatedly request the expired content URL. |
+| The API returns 429 | The relevant control shows the rate-limit message and a Retry-After countdown. Automatic retries stop during that period. |
+| The API returns a dataset/query conflict | The page discards stale cursor or selection state, preserves valid filters, resolves a consistent dataset, and tells the user what changed. |
 
-## 5. How the API contract shapes the UI
+## 6. Shared UX and design system
 
-### 5.1 Immutable dataset pinning
+### 6.1 Visual system
 
-One market page session uses one `dataset_version_id`:
+Tailwind CSS supplies semantic design tokens for colour, typography, spacing, borders, shadows, focus rings, and breakpoints. Shared primitives include:
 
-1. The first properties request may omit the version and let the service resolve the active dataset.
-2. Read `dataset_version.id` and `content_sha256` from the response.
-3. Send that ID with statistics, charts, later pages, and exports.
-4. Changing filters or sort does not change the version. Resolve the active version again only after an explicit refresh or an unrecoverable version conflict.
+- `Button`, `IconButton`, and `LinkButton`;
+- `Field`, `NumberField`, `Select`, and `ErrorSummary`;
+- `Panel`, `MetricCard`, `StatusBadge`, and `EmptyState`;
+- `DataTable`, `SortButton`, and `PaginationControls`;
+- `Dialog`, `Disclosure`, `ToastRegion`, and `Skeleton`.
 
-The `query_fingerprint` helps diagnose whether the table, statistics, and export use the same canonical selection. It is not an authorisation token and cannot replace the complete selection.
+Feature components compose these primitives. They do not redefine colours, focus styles, or status semantics locally.
 
-### 5.2 Exact decimals
+### 6.2 Accessibility baseline
 
-- Keep `Money`, `OneDecimal`, `ThreeDecimal`, and `DecimalValue` as strings in transport and domain models.
-- Format money with a string-safe decimal formatter. Do not convert it to binary floating point and then write it back into a request.
-- A presentation adapter may convert bounded chart values to `number` for Chart.js. It must retain the source strings for tooltips, tables, exports, and later requests.
-- Canonicalise form values at the submit boundary: two decimal places for money, one for bathrooms, and three for distance and school rating.
+The target is WCAG 2.2 AA.
 
-### 5.3 Cursor pagination
+- Every control has a visible label and keyboard focus.
+- Colour is never the only indication of error, selection, sort direction, warning, or job status.
+- Field errors use `aria-invalid` and `aria-describedby`; the error summary is focusable.
+- Sortable table headers are buttons and expose `aria-sort`.
+- Charts have titles, descriptions, and an equivalent table or textual summary.
+- Pending regions use `aria-busy`; concise `aria-live="polite"` messages announce completed asynchronous actions.
+- Loading skeletons expose one status per region, not one status per placeholder.
+- Dialogs trap focus, close with Escape, and return focus to their trigger.
+- Touch targets are at least 44 by 44 CSS pixels where the component layout allows it.
+- The portal works at 200% zoom without losing content or actions.
 
-- Use `cursor` in the URL, not `page` or `offset`.
-- Remove the cursor and local cursor history when the sort, filter, limit, or dataset version changes.
-- Treat the cursor as an opaque string. Do not parse or edit it. Enforce the 2,048-character maximum.
-- Back can use browser history or preceding cursors stored by `useCursorHistory`. The UI must not show random page navigation.
+### 6.3 Loading and errors
 
-### 5.4 Statistics query builder
+There are three loading levels:
 
-The frontend uses a controlled builder. Users cannot supply metric IDs, SQL fields, or expressions:
+1. Route loading for the initial Server Component render.
+2. Section loading for streamed or independently recoverable data such as charts.
+3. Control loading for estimate, what-if, filter navigation, and export actions.
+
+A page-level error boundary handles a failed critical read. Local errors handle form submissions, charts, what-if, and exports so one failed feature does not erase unrelated content. Error messages include a recovery action and place the correlation ID under technical details.
+
+## 7. Next.js architecture
+
+### 7.1 App Router structure
+
+The portal uses App Router route segments, layouts, loading files, and error boundaries:
+
+```text
+src/app/
+├── layout.tsx
+├── template.tsx
+├── page.tsx
+├── loading.tsx
+├── error.tsx
+├── (portal)/
+│   ├── layout.tsx
+│   ├── estimator/
+│   │   ├── page.tsx
+│   │   ├── loading.tsx
+│   │   └── error.tsx
+│   └── market/
+│       ├── page.tsx
+│       ├── loading.tsx
+│       └── error.tsx
+└── api/
+    ├── estimator/...
+    └── market/...
+```
+
+The root and portal layouts are Server Components. `template.tsx` is a small Client Component used only for the page-entry transition.
+
+### 7.2 Server and Client Component boundaries
+
+Use Server Components for:
+
+- page composition and metadata;
+- initial estimate history;
+- initial property records and market statistics;
+- parsing and validating committed URL search parameters;
+- backend calls that need server-only configuration; and
+- converting API responses into serialisable page models.
+
+Use Client Components only for:
+
+- form controls and client validation;
+- table sorting/filter controls and cursor navigation;
+- charts that need browser canvas APIs;
+- estimate selection and comparison interaction;
+- what-if and export mutations;
+- dialogs, disclosures, announcements, and Motion transitions.
+
+A Client Component boundary should be placed around the smallest interactive area that needs it. Presentational markup that does not use browser APIs remains a Server Component where practical.
+
+### 7.3 Initial data loading
+
+`/estimator/page.tsx` loads the first history page on the server and passes a serialisable page model to the interactive estimator screen.
+
+`/market/page.tsx` performs a two-stage server load:
+
+1. request the first property page to resolve the immutable dataset version;
+2. request overview and grouped statistics in parallel, pinned to that version.
+
+The table can render as soon as the property page is available. Independent chart sections may stream behind `Suspense` after the version is known. The browser must not repeat these initial requests in `useEffect`.
+
+Server Components call server-only data-access functions directly. They do not make an HTTP request to the portal's own Route Handlers. Browser-originated API mutations use same-origin Route Handlers as a thin backend-for-frontend boundary; URL navigation starts a new Server Component render.
+
+### 7.4 Data-fetching policy
+
+| Data | Policy |
+| --- | --- |
+| Visitor-specific estimate history | `no-store`; private data must not be shared across visitors |
+| First market request without a dataset version | `no-store`; the active version may change |
+| Dataset-pinned market reads | Request-scoped memoisation; persistent portal caching only if its key space and invalidation policy are measured and bounded |
+| Statistics | Batch metrics where possible; parallelise independent grouped requests after dataset pinning |
+| What-if and estimate creation | Explicit user mutation; no cache |
+| Export job status | Poll according to `Retry-After`; no cache |
+| Export content | Stream through the BFF while preserving content type, disposition, length, digest, and ETag headers |
+
+The Java service owns its bounded business-query cache. The portal does not add an unbounded second cache for arbitrary filter combinations.
+
+## 8. Smart and dummy component model
+
+The design uses one smart container per interactive screen and small dummy components for presentation.
+
+### 8.1 Smart container responsibilities
+
+A smart container may:
+
+- own client-side interaction state or a reducer;
+- call browser API clients for mutations;
+- commit filters and cursors to the router;
+- coordinate optimistic state, retries, and focus;
+- convert domain objects to view props; and
+- pass data and event callbacks to dummy components.
+
+It does not fetch the initial page data. That belongs to the route's Server Component.
+
+### 8.2 Dummy component responsibilities
+
+A dummy component:
+
+- receives data, status, and callbacks through typed props;
+- renders one UI responsibility;
+- does not import `next/navigation`, API clients, server-only modules, or feature stores;
+- does not parse wire-format errors, decimals, or cursors; and
+- can be rendered in a component test with fixed props.
+
+“Dummy” describes the component's dependency boundary, not a lack of behaviour. A controlled form or sortable table may handle DOM events while all business decisions remain in its parent.
+
+### 8.3 Composition example
+
+```tsx
+// Server Component
+export default async function EstimatorPage() {
+  const initialModel = await getEstimatorPageModel();
+  return <EstimatorScreen initialModel={initialModel} />;
+}
+
+// Client smart container
+function EstimatorScreen({ initialModel }: Props) {
+  const [state, dispatch] = useReducer(estimatorReducer, initialModel);
+
+  return (
+    <EstimatorView
+      model={toEstimatorViewModel(state)}
+      onSubmit={submitEstimate}
+      onSelectForComparison={selectForComparison}
+      onReuseScenario={reuseScenario}
+    />
+  );
+}
+```
+
+The same split applies to the Market screen: the Server Component supplies the initial page model, the smart container coordinates interaction, and dummy components render filters, cards, charts, table, what-if, and exports.
+
+## 9. Client state and custom hooks
+
+The portal does not need a global state library. URL state, Server Component data, and feature-level reducers cover the required scope.
+
+| State | Owner |
+| --- | --- |
+| Committed market filters, sort, limit, cursor, dataset version | URL search parameters |
+| Draft form and filter values | Local controlled form state |
+| Initial history and market data | Server Component page model |
+| Estimate comparison selection | Estimator smart-container reducer |
+| What-if result and export jobs | Market smart-container reducer |
+| Transient disclosure/dialog state | Local component state |
+
+The PDF requires custom hooks for shared functionality. Hooks are therefore limited to behaviour reused by more than one feature; they do not become feature-wide service objects.
+
+| Shared hook | Purpose | Used by |
+| --- | --- | --- |
+| `useAsyncAction` | Normalise pending/success/error state, abort handling, and duplicate-action prevention for one user action | Estimate, what-if, export create/cancel |
+| `useFieldErrors` | Map structured API field violations to controls and a focusable error summary | Estimator form, what-if form, market filters |
+| `useLiveAnnouncement` | Publish concise accessible messages after asynchronous completion | Estimate, filter update, pagination, export |
+| `useDisclosureState` | Provide consistent open/close, trigger linkage, Escape handling, and focus return | Mobile filters, technical details, export details |
+
+Feature orchestration stays in `EstimatorScreen` and `MarketScreen`. Shared hooks never act as feature-wide service objects.
+
+## 10. API boundary and error model
+
+Browser calls go through same-origin Route Handlers. These handlers:
+
+- enforce same-origin rules for state-changing requests;
+- allow-list query parameters and forwarded headers;
+- enforce request-size and timeout limits;
+- forward or create `X-Correlation-ID`;
+- forward `Idempotency-Key`, `Location`, and `Retry-After` where required;
+- validate path identifiers before forwarding; and
+- preserve streaming download headers.
+
+Route Handlers do not calculate statistics, interpret cursors, generate files, or apply business rules.
+
+The frontend uses one error shape:
 
 ```ts
-type DashboardPreset = "overview" | "priceByBedrooms" | "countBySchoolBand";
-
-const presets: Record<DashboardPreset, StatisticsQuery> = {
-  // Reviewed constants constrained by generated OpenAPI types.
-};
+interface FrontendApiError {
+  status: number;
+  code: string;
+  message: string;
+  fields: Array<{ field: string; message: string }>;
+  correlationId?: string;
+  retryAfterSeconds?: number;
+}
 ```
 
-- The overview sends all metrics in one request rather than one request per card.
-- A grouped query returns at most 200 groups; high-cardinality fields require a bucket width.
-- Convert `StatisticValue[]` to `Map<metric_id, value>` before passing data to dummy components. Presentation components do not understand the wire schema.
+App 2 TypeScript wire types are generated from `market-service-v2.yaml` and are never edited by hand. Mappers convert snake_case wire values and decimal strings into explicit domain/view models. Generated contract types do not leak directly into dummy components.
 
-### 5.5 Asynchronous exports
+## 11. Motion design
 
-The frontend state machine matches the API:
+Motion adds orientation and continuity, not decoration. It is used only in Client Components that already need browser interaction.
 
-```text
-idle -> creating -> queued -> running -> succeeded
-                    |          |          |
-                    +------> failed       +-> expired
-                    +------> cancelled
-```
-
-- Treat a successful `POST /exports` as `202 Accepted`, not as a file response.
-- A manual retry of the same canonical request reuses its Idempotency-Key. A changed selection gets a new UUID.
-- Prefer the server's `Retry-After` value. If it is absent, use bounded backoff of 2s, 3s, and 5s, capped at 10s.
-- Pause polling while the page is hidden and query once immediately when it becomes visible.
-- Stop polling in every terminal state and abort the request when the component unmounts.
-- Download by navigating to the same-origin streaming route. Do not read the complete file into a browser Blob first.
-
-## 6. Next.js architecture
-
-### 6.1 Route and rendering boundaries
-
-| File or layer | Type | Responsibility |
-| --- | --- | --- |
-| `app/layout.tsx` | Server Component | Metadata, HTML shell, shared header/footer, and Motion provider slot |
-| `app/template.tsx` | Client Component | A light enter transition when the route segment changes |
-| `app/estimator/page.tsx` | Async Server Component | Resolve anonymous client identity, fetch initial history on the server, and pass it to the estimator smart client |
-| `app/market/page.tsx` | Async Server Component | Validate search params, fetch properties, pin the dataset, then fetch statistics and chart data |
-| `app/**/loading.tsx` | Server Component | Route-level skeleton with the same dimensions as the final layout |
-| `app/**/error.tsx` | Client Component | Segment error boundary, retry action, and correlation ID |
-| `app/api/**/route.ts` | Route Handler | Browser BFF: enforce same-origin requests, forward approved headers/cookies, normalise errors, and stream responses |
-| `features/*/server/*` | Server only | Direct backend clients for RSC; they do not call the portal's own Route Handlers |
-| `*.container.tsx` | Client Component | Local interaction state, router transitions, mutations, and export orchestration |
-| `*.view.tsx` | Dummy component | Receives serialisable data/view models and callbacks; never imports routing, transport, or a business store |
-
-RSC initial reads call backend services through `server-only` data clients. Browser events use the same-origin `/api/*` BFF. This gives the initial page a server data load without making a Server Component perform an unnecessary HTTP round trip through its own Route Handler.
-
-### 6.2 Smart/dummy component contract
-
-A smart component may:
-
-- call custom hooks;
-- own a reducer or state machine;
-- call `router.push`, `router.replace`, or `router.refresh`;
-- start user-triggered mutations;
-- convert wire DTOs into view models; and
-- track pending, optimistic, and retry state.
-
-A dummy component must:
-
-- receive all data and callbacks through props;
-- never import `next/navigation`, an API client, or a server client;
-- know nothing about correlation IDs, cursors, idempotency, or API URLs;
-- render independently in a fixed-prop Testing Library harness; and
-- use `"use client"` only when DOM interaction, Chart.js, or Motion requires it.
-
-The server page is the smart component for the initial render. The client container is the smart component for post-hydration interaction. Both use the same domain types and view-model factories, so the UI has one model rather than separate server and browser versions.
-
-### 6.3 Proposed file structure
-
-```text
-web-portal/
-├── app/
-│   ├── layout.tsx                         # RSC shared shell
-│   ├── template.tsx                       # subtle route enter transition
-│   ├── loading.tsx
-│   ├── error.tsx
-│   ├── estimator/
-│   │   ├── page.tsx                       # async RSC: initial history
-│   │   ├── loading.tsx
-│   │   └── error.tsx
-│   ├── market/
-│   │   ├── page.tsx                       # async RSC: properties -> pinned stats
-│   │   ├── loading.tsx
-│   │   └── error.tsx
-│   └── api/
-│       ├── estimator/estimates/...
-│       └── market/
-│           ├── properties/route.ts
-│           ├── statistics/route.ts
-│           ├── what-if/route.ts
-│           └── exports/
-│               ├── route.ts               # POST create
-│               └── [exportId]/
-│                   ├── route.ts            # GET status, DELETE cancel
-│                   └── content/route.ts    # GET streamed content
-├── components/
-│   ├── app-shell/
-│   ├── motion/
-│   │   ├── motion-provider.tsx
-│   │   ├── page-transition.tsx
-│   │   └── transitions.ts
-│   └── ui/                                # shared accessible primitives
-├── features/
-│   ├── estimator/
-│   │   ├── api/client.ts                  # browser mutations and pagination
-│   │   ├── server/queries.ts              # server-only initial history
-│   │   ├── model/estimator.types.ts
-│   │   ├── model/to-estimator-view.ts
-│   │   ├── hooks/use-estimator.ts
-│   │   ├── estimator-workspace.container.tsx
-│   │   └── components/
-│   │       ├── estimator-workspace.view.tsx
-│   │       ├── estimate-form.tsx
-│   │       ├── estimate-result.tsx
-│   │       ├── estimate-chart.tsx
-│   │       ├── history-table.tsx
-│   │       └── comparison.tsx
-│   └── market/
-│       ├── api/client.ts                  # browser what-if/export calls
-│       ├── server/queries.ts              # RSC properties/statistics calls
-│       ├── model/market-query.ts           # URL <-> scope/selection
-│       ├── model/statistics-presets.ts
-│       ├── model/to-market-view.ts
-│       ├── hooks/use-market-navigation.ts
-│       ├── hooks/use-cursor-history.ts
-│       ├── hooks/use-export-job.ts
-│       ├── hooks/use-what-if.ts
-│       ├── market-workspace.container.tsx
-│       └── components/
-│           ├── market-workspace.view.tsx
-│           ├── filter-form.tsx
-│           ├── active-filter-list.tsx
-│           ├── metric-grid.tsx
-│           ├── market-charts.tsx
-│           ├── property-table.tsx
-│           ├── what-if-panel.tsx
-│           └── export-centre.tsx
-├── lib/
-│   ├── contracts/market-v2.generated.ts   # generated from OpenAPI; no hand edits
-│   ├── api/api-error.ts
-│   ├── bff/proxy.ts
-│   ├── decimal.ts
-│   ├── validation/property.ts
-│   └── validation/market-query.ts
-└── tests/
-    ├── contract/
-    ├── unit/
-    ├── component/
-    └── e2e/
-```
-
-The codebase can move to this structure in stages; it does not need a mechanical rename in one change. The target dependency direction is:
-
-```text
-app page -> feature server query -> backend
-app page -> client container -> dummy view
-client container -> hook -> browser API client -> BFF route -> backend
-dummy view -> shared UI primitives
-```
-
-Reverse dependencies are not allowed. For example, `components/ui` must not import `features/market`, and a dummy view must not import `lib/bff`.
-
-## 7. Data fetching and state flow
-
-### 7.1 Estimator initial render
-
-```mermaid
-sequenceDiagram
-    participant U as Browser
-    participant M as Middleware
-    participant P as estimator/page RSC
-    participant E as estimator-service
-    participant C as Client container
-
-    U->>M: GET /estimator
-    M->>M: Ensure anonymous client ID cookie/header
-    M->>P: Continue request
-    P->>E: GET history, no-store, client ID
-    E-->>P: First HistoryPage
-    P-->>U: HTML + initialHistory
-    U->>C: Hydrate with initialHistory
-```
-
-RSC no longer passes an empty array and starts the first load in `useEffect`. Personal history uses `cache: "no-store"`. Middleware must make the client ID available in an existing cookie or injected request header before RSC runs; the Server Component does not try to write a cookie.
-
-### 7.2 Market initial render and consistency
-
-```mermaid
-sequenceDiagram
-    participant U as Browser
-    participant P as market/page RSC
-    participant S as market-service v2
-
-    U->>P: GET /market?filters&sort&cursor
-    P->>P: Parse and validate URL state
-    P->>S: GET properties (first request may be unpinned)
-    S-->>P: PropertyPage + dataset version
-    par Pinned overview
-        P->>S: POST overview statistics + version
-    and Pinned chart 1
-        P->>S: POST grouped statistics + version
-    and Pinned chart 2
-        P->>S: POST grouped statistics + version
-    end
-    S-->>P: Pinned statistics responses
-    P-->>U: HTML/RSC payload + coherent MarketViewModel
-```
-
-Later filter, sort, and cursor changes update the URL and start a new RSC render. The client container uses `useTransition` to mark the current view as updating. It does not repeat the same GET/POST sequence in a `useEffect`.
-
-### 7.3 Request concurrency
-
-- The first properties request completes before statistics so the page can resolve the dataset version.
-- Once the version is known, overview and grouped statistics requests run in parallel with `Promise.all`.
-- What-if and export are separate user-triggered mutations and do not block the market read model.
-- A new navigation aborts stale browser mutations or polls. Next.js owns the RSC request lifecycle.
-- Metric cards do not create one request each.
-
-### 7.4 Cache strategy
-
-| Data | Portal strategy | Reason |
-| --- | --- | --- |
-| Estimator history | `no-store` | It is scoped to an anonymous client and changes after create/delete operations. |
-| Market bootstrap without a dataset version | `no-store` | The active version may change. |
-| Market properties and statistics | `no-store` by default; rely on bounded Caffeine caching in market-service | Avoid duplicate cache layers and an unbounded set of portal cache keys. The backend key already includes dataset hash and normalised query. |
-| Duplicate work in one RSC render | React request memoisation / `cache()` | Remove duplicate calls during one render without persisting business data across users. |
-| What-if | `no-store` | It depends on the active model version and is an explicit user action. |
-| Export status and content | `no-store` | Job state changes, and content has its own expiry/ETag lifecycle. |
-
-Add portal-level `revalidate` or tag caching only after measuring a bounded key space. Personal history and in-progress exports must never be cached simply to demonstrate cache usage.
-
-### 7.5 State ownership
-
-| State | Owner | In URL? |
-| --- | --- | --- |
-| Submitted market filters, sort, limit, cursor, dataset version | RSC search params | Yes |
-| Market filter draft | `FilterForm` / client container | No |
-| Previous cursor stack | Browser history + `useCursorHistory` | Current cursor only |
-| Properties/statistics/chart result | RSC props | No |
-| What-if form and result | `useWhatIf` | No |
-| Export jobs opened in this tab | `useExportJob` reducer; optional sessionStorage recovery | No |
-| Initial estimator history | RSC props, then `useEstimator` reducer | No |
-| Estimator comparison selection | `useEstimator` | No |
-| Motion preference | OS media query through Motion | No |
-
-Do not add a global Redux or Zustand store. Feature reducers plus URL server state cover the current needs. A future global store requires a real state-sharing need across routes and features.
-
-## 8. BFF and contract organisation
-
-### 8.1 Browser-facing route mapping
-
-| Portal BFF | Backend v2 | Notes |
-| --- | --- | --- |
-| `GET /api/market/properties` | `GET /api/v2/market/properties` | Allow-list query parameters; forward correlation ID |
-| `POST /api/market/statistics` | `POST /api/v2/market/statistics/query` | JSON size limit, same-origin check, typed body |
-| `POST /api/market/what-if` | `POST /api/v2/market/what-if` | Same-origin; separate from estimator history |
-| `POST /api/market/exports` | `POST /api/v2/market/exports` | Forward Idempotency-Key, Location, and Retry-After |
-| `GET /api/market/exports/[id]` | `GET /api/v2/market/exports/{id}` | Validate UUID; no-store |
-| `DELETE /api/market/exports/[id]` | `DELETE /api/v2/market/exports/{id}` | Same-origin; idempotent cancellation |
-| `GET /api/market/exports/[id]/content` | `GET /api/v2/market/exports/{id}/content` | Streaming pass-through; preserve content headers |
-
-The BFF does not calculate aggregates, parse cursors, render PDF files, or poll export jobs. It is a thin trust boundary responsible for same-origin checks, allow-listed headers, body/query limits, UUID validation, timeouts, cookie/correlation forwarding, and a consistent error envelope.
-
-### 8.2 Type sources
-
-- Generate `market-v2.generated.ts` from OpenAPI and verify in CI that generated output has not drifted.
-- Generated types describe the wire contract only. Feature code converts them into explicit camelCase view models.
-- Retire the hand-written v1 composite `MarketAnalysis` type. Properties, aggregates, and charts are no longer presented as one backend response.
-- Use one shared `ApiError` domain type with `status`, `code`, `message`, `fields`, `correlationId`, and optional `retryAfterSeconds`.
-
-## 9. Loading, errors, and recovery
-
-### 9.1 Loading levels
-
-1. `app/loading.tsx`: first portal route shell.
-2. Segment `loading.tsx`: initial Estimator/Market RSC request. Skeletons match final component dimensions to prevent layout shift.
-3. `useTransition` pending: filter, sort, and cursor RSC navigation. Keep existing content readable and mark the region with `aria-busy`.
-4. Control-level pending: estimate, what-if, export create, and export cancel. Disable only controls that could duplicate the operation.
-5. Chart/table empty states are distinct from loading states. A skeleton never means “no data”.
-
-### 9.2 Status code mapping
-
-| Status | UI behaviour |
-| --- | --- |
-| 400 | Show a request error. If URL parameters are invalid, canonicalise them and return to safe defaults. |
-| 404 | Mark an export as missing or removed and stop polling. |
-| 409 | For cursor/query or dataset conflict, discard the cursor, preserve valid filters, and bootstrap again. Do not automatically retry an idempotency conflict. |
-| 410 | Mark the export Expired and offer Regenerate. |
-| 422 | Map `fields[]` to controls and show a focusable error summary. |
-| 429 | Read `Retry-After`, show a countdown, and suppress automatic requests during it. |
-| 500 | Show a segment or operation error with Retry and the correlation ID. |
-| 503 | Show that estimate/what-if is temporarily unavailable; do not clear market records or statistics. |
-
-Error copy should tell the user what they can do next. Place the correlation ID under “Technical details” rather than showing only an internal code.
-
-## 10. Motion design
-
-Install `motion` and import React APIs from `motion/react`. Motion belongs in explicit client leaves or providers; animation is not a reason to convert an entire RSC page into a Client Component.
-
-### 10.1 Global policy
+### 11.1 Global policy
 
 ```tsx
 "use client";
@@ -472,129 +429,185 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
 }
 ```
 
-- Default duration is 160-220ms. Route entry is no longer than 180ms.
-- Use a standard ease-out curve. Do not use a bouncing spring to indicate business success or failure.
-- Set `reducedMotion="user"` globally. Reduced-motion mode removes large transform and layout animations while retaining short opacity feedback where it helps orientation.
-- Do not use parallax, scroll-jacking, infinite decorative animation, or full-page horizontal slides.
-- Animation must not delay control availability, focus movement, error announcements, or downloads.
-- Components rendered under strict `LazyMotion` use `m` rather than the full `motion` component.
+Components under strict `LazyMotion` use `m` components. Default transitions last 160-220ms and use a simple ease-out curve. `reducedMotion="user"` respects the operating-system preference; large transform and layout animations disappear in reduced mode.
 
-### 10.2 Approved transitions
+### 11.2 Approved transitions
 
-| Context | Motion behaviour | Limit |
-| --- | --- | --- |
-| Route change | Small opacity entry in `app/template.tsx` | No awaited exit; never block navigation |
-| Active primary navigation | Small `layoutId` underline/background | Position and opacity only |
-| Estimate or what-if result | `AnimatePresence` fade plus 4px vertical movement | DOM content and live announcement appear together |
-| Comparison and active filters | `layout` for insertion, removal, and reordering | Small lists only; never animate every row in a large table |
-| Export status | Badge colour/opacity transition | Running may use a CSS spinner; terminal state always has text |
-| Error or notice | Short fade | Do not shake inputs or flash red |
+| Interaction | Transition |
+| --- | --- |
+| Route entry | Short opacity fade in `app/template.tsx`; no delayed exit animation |
+| Active navigation item | Small shared-layout underline or background |
+| Prediction and what-if result | `AnimatePresence` opacity plus at most 4px vertical movement |
+| Comparison cards and active-filter chips | `layout` transition for small-list insertion, removal, and reordering |
+| Export status | Subtle colour/opacity transition; state is always written as text |
+| Error and success notice | Short opacity transition without shaking or flashing |
 
-When `useReducedMotion()` is true, Chart.js data changes disable chart animation. Table pagination does not stagger every row; that would add delay and unnecessary work.
+Do not animate every row in a data table, stagger loading content, use parallax, move the full page horizontally, or run decorative loops. Chart animation is disabled when reduced motion is requested. Animation never delays focus, screen-reader announcements, navigation, or downloads.
 
-Motion references: [React integration](https://motion.dev/docs/react), [MotionConfig and reduced motion](https://www.motion.dev/docs/react-motion-config), [accessible animations](https://motion.dev/docs/react-accessibility), [layout animations](https://motion.dev/docs/react-layout-animations), and [AnimatePresence](https://motion.dev/docs/react-animate-presence).
+References: [Motion for React](https://motion.dev/docs/react), [MotionConfig](https://www.motion.dev/docs/react-motion-config), [accessibility](https://motion.dev/docs/react-accessibility), [layout animations](https://motion.dev/docs/react-layout-animations), and [AnimatePresence](https://motion.dev/docs/react-animate-presence).
 
-## 11. Responsive design and accessibility
+## 12. Proposed code organisation
 
-### 11.1 Responsive layout
+```text
+web-portal/
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx
+│   │   ├── template.tsx
+│   │   ├── page.tsx
+│   │   ├── loading.tsx
+│   │   ├── error.tsx
+│   │   ├── (portal)/
+│   │   │   ├── layout.tsx
+│   │   │   ├── estimator/
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── loading.tsx
+│   │   │   │   └── error.tsx
+│   │   │   └── market/
+│   │   │       ├── page.tsx
+│   │   │       ├── loading.tsx
+│   │   │       └── error.tsx
+│   │   └── api/
+│   │       ├── estimator/...
+│   │       └── market/
+│   │           ├── properties/route.ts
+│   │           ├── statistics/route.ts
+│   │           ├── what-if/route.ts
+│   │           └── exports/...
+│   ├── features/
+│   │   ├── estimator/
+│   │   │   ├── server/get-estimator-page-model.ts
+│   │   │   ├── containers/estimator-screen.tsx
+│   │   │   ├── components/
+│   │   │   │   ├── estimator-view.tsx
+│   │   │   │   ├── property-form.tsx
+│   │   │   │   ├── prediction-result.tsx
+│   │   │   │   ├── prediction-chart.tsx
+│   │   │   │   ├── estimate-history.tsx
+│   │   │   │   └── estimate-comparison.tsx
+│   │   │   ├── model/
+│   │   │   │   ├── estimator-reducer.ts
+│   │   │   │   ├── estimator-schema.ts
+│   │   │   │   └── estimator-view-model.ts
+│   │   │   └── api/estimator-client.ts
+│   │   └── market/
+│   │       ├── server/get-market-page-model.ts
+│   │       ├── containers/market-screen.tsx
+│   │       ├── components/
+│   │       │   ├── market-view.tsx
+│   │       │   ├── market-filters.tsx
+│   │       │   ├── active-filter-summary.tsx
+│   │       │   ├── metric-grid.tsx
+│   │       │   ├── market-charts.tsx
+│   │       │   ├── property-table.tsx
+│   │       │   ├── what-if-panel.tsx
+│   │       │   └── export-centre.tsx
+│   │       ├── model/
+│   │       │   ├── market-reducer.ts
+│   │       │   ├── market-query.ts
+│   │       │   ├── statistics-presets.ts
+│   │       │   └── market-view-model.ts
+│   │       └── api/market-client.ts
+│   ├── shared/
+│   │   ├── api/
+│   │   │   ├── api-error.ts
+│   │   │   └── request.ts
+│   │   ├── contracts/market-v2.generated.ts
+│   │   ├── hooks/
+│   │   │   ├── use-async-action.ts
+│   │   │   ├── use-field-errors.ts
+│   │   │   ├── use-live-announcement.ts
+│   │   │   └── use-disclosure-state.ts
+│   │   ├── motion/
+│   │   │   ├── motion-provider.tsx
+│   │   │   └── transitions.ts
+│   │   ├── ui/
+│   │   ├── validation/
+│   │   └── formatting/
+│   └── styles/globals.css
+├── tests/
+│   ├── contract/
+│   ├── unit/
+│   ├── component/
+│   └── e2e/
+└── package.json
+```
 
-- Mobile `<640px`: one column; collapsible filters; what-if follows the main market content; the table sits in a labelled horizontal scroll region.
-- Tablet `640-1279px`: two-column metric cards; one or two chart columns; form/result changes layout according to available width.
-- Desktop `>=1280px`: market content with a sticky what-if aside; two-column estimator form and result.
-- A viewport change can alter presentation, but it must not hide information needed to complete a task.
+Dependency direction is one way:
 
-### 11.2 WCAG 2.2 AA baseline
+```text
+route Server Component -> feature server data access -> backend
+route Server Component -> feature smart container -> dummy components
+smart container -> feature API client -> same-origin Route Handler -> backend
+feature components -> shared UI, hooks, motion, validation, formatting
+```
 
-- Every control has a visible label, keyboard focus, and a target of at least 44 by 44 CSS pixels where layout permits. Compact table controls remain fully operable.
-- Colour is never the only indication of sort, error, warning, status, or selection.
-- Tables use `caption`, `thead`, and correct header scope. A sortable header is a button with `aria-sort`.
-- The filter error summary is focusable. Invalid fields use `aria-invalid` and `aria-describedby`.
-- Pending regions use `aria-busy`; concise `aria-live="polite"` messages announce asynchronous completion.
-- Each chart has a title, description, and equivalent summary or data table. Canvas is not the only representation of its information.
-- Dialogs and confirmations return focus correctly and handle Escape consistently.
-- Skip link, landmarks, and heading hierarchy remain consistent across both applications.
-- Assistive technology receives one loading status for a skeleton region, not an announcement for every placeholder.
+`shared` must not import from `features`. Estimator and Market features must not import each other's internal containers, reducers, or API clients. Cross-application UI belongs in `shared/ui`; cross-application behaviour belongs in `shared/hooks` only when it is genuinely reused.
 
-## 12. Custom hooks
+## 13. Verification strategy
 
-| Hook | Shared responsibility | Does not own |
-| --- | --- | --- |
-| `useEstimator` | History reducer, create/delete/clear actions, comparison selection, operation errors | Initial fetch or DOM rendering |
-| `useMarketNavigation` | Submitted URL state, Apply/Reset/Sort/Next/Back, `useTransition` | Market read API calls |
-| `useCursorHistory` | Previous cursor stack for the current query fingerprint | Cursor parsing |
-| `useWhatIf` | What-if mutation, abort handling, warnings, and operation errors | Estimator history |
-| `useExportJob` | Create/poll/cancel/regenerate state machine, Retry-After, page-visibility pause | File generation or Blob buffering |
-| `useStableIdempotencyKey` | A safe retry key for the same canonical payload | Business validation |
-| `useFieldErrors` | Mapping API `fields[]` into form fields and the error summary | Backend integrity validation |
+### 13.1 Automated tests
 
-Hooks encapsulate reusable behaviour; they do not hide a page's JSX. RSC queries are not hooks and belong in `features/*/server/queries.ts`.
+| Layer | Coverage |
+| --- | --- |
+| Contract | Generated App 2 types, BFF headers, decimal strings, error envelope, export status, and streaming headers |
+| Unit | Validation schemas, reducers, URL-to-query mapping, statistics presets, decimal formatting, and shared hooks |
+| Component | Dummy components in loading, empty, error, and success states; keyboard and ARIA behaviour |
+| Integration | RSC data loading, dataset pinning, partial market failures, and BFF forwarding |
+| E2E | Both App 1 and App 2 user journeys across desktop and mobile viewports |
+| Accessibility | axe checks plus manual keyboard, screen-reader copy, reduced-motion, and 200% zoom checks |
 
-## 13. Testing and black-box acceptance
+### 13.2 Required end-to-end scenarios
 
-### 13.1 Test layers
+1. Estimator initial history is present in the server-rendered result with no duplicate initial browser fetch.
+2. Invalid estimator input is blocked and fully described; valid input produces matching table and chart output.
+3. History selection creates a two-to-four property comparison without another prediction call.
+4. Market properties, statistics, charts, and exports use the same dataset version.
+5. Filter and sort changes reset the cursor and update the URL.
+6. Next/Back cursor navigation has no duplicated or missing records.
+7. Global metrics and charts are never calculated from the current property page.
+8. A what-if 503 leaves the rest of the market dashboard usable.
+9. Export polling honours `Retry-After`, stops in terminal states, and supports cancel, download, expiry, and regeneration.
+10. Status 422 maps to fields, 429 presents a cooldown, and 409 recovers without silently changing the submitted filter scope.
+11. Reduced-motion mode removes large movement while preserving every state change.
+12. Both applications remain operable at mobile, tablet, and desktop sizes.
 
-- Contract: validate BFF requests/responses, decimal strings, headers, and the error envelope against the OpenAPI snapshot.
-- Unit: URL/scope conversion, statistics presets, selection canonicalisation, cursor reset, export reducer, and decimal formatting.
-- Component: dummy views in loading, empty, error, and success states; keyboard, ARIA, and reduced-motion branches.
-- Integration: mock backend tests for RSC server queries, including the sequence of dataset resolution followed by parallel pinned statistics.
-- E2E: complete user flows in both applications, URL refresh/share, 429/503/409 handling, export terminal states, and mobile viewports.
-- Accessibility: Playwright plus axe, with manual checks for keyboard order, screen-reader copy, and 200% zoom.
+## 14. Requirement traceability
 
-### 13.2 Required automated scenarios
-
-1. `/estimator` initial HTML/RSC payload contains history or its empty state, and the browser does not send a duplicate initial-history request.
-2. A valid estimate is created once; retrying the same payload does not duplicate it.
-3. History selection, deletion, and comparison stay consistent.
-4. `/market` properties, overview, charts, and export use the same dataset version.
-5. Filter or sort changes clear the cursor; Next/Back has no duplicate or missing records.
-6. Global table/chart statistics are not derived from the current page in the browser.
-7. Export polling follows Retry-After and stops on a terminal state, unmount, or hidden page; content uses streaming navigation.
-8. A 410 offers regeneration, a 429 has a countdown, and a what-if 503 does not clear the dashboard.
-9. With `prefers-reduced-motion: reduce`, there are no large transform/layout animations and every business state remains visible.
-10. Core flows in both applications work on mobile, tablet, and desktop.
-
-## 14. Migration plan
-
-### Phase 1: Contract foundation
-
-- Generate TypeScript wire types from `market-service-v2.yaml`.
-- Add shared `ApiError`, decimal helpers, and URL/scope/selection builders.
-- Add v2 BFF routes and contract tests while retaining the v1 UI as a short-lived fallback.
-
-### Phase 2: RSC initial data
-
-- Convert the Estimator page to an async RSC, pass real `initialHistory`, and remove the initial `useEffect` fetch.
-- Convert the Market page to an async RSC with properties-first dataset pinning and pinned statistics.
-- Separate server queries from browser API clients.
-
-### Phase 3: Market read UI
-
-- Replace the v1 composite `MarketAnalysis` with `PropertyPage` and statistics view models.
-- Replace offset/page-number controls with cursor Next/Back.
-- Add active-filter chips, dataset indicator, and the controlled insight comparison.
-
-### Phase 4: Export jobs
-
-- Implement BFF routes for create, status, cancel, and content.
-- Implement `useExportJob` and the Export Centre.
-- Remove assumptions of synchronous CSV/PDF generation and the Blob-based PDF download path.
-
-### Phase 5: Motion and accessibility
-
-- Add the Motion provider and transitions for route entry, results, filters, and comparison.
-- Support reduced motion and disable large-table row animation and chart animation in reduced mode.
-- Complete axe, keyboard, zoom, and error-recovery acceptance checks.
-
-Every phase must keep type checking, lint, unit/component tests, and the production build green. Remove v1 routes only after v2 E2E tests pass.
+| PDF requirement | Design coverage |
+| --- | --- |
+| Shared layout and navigation | Sections 3, 6, and 7 |
+| App Router | Section 7.1 |
+| Consistent design system | Section 6 |
+| Layout loading and errors | Sections 6.3 and 7.1 |
+| App 1 form and validation | Sections 4.1 and 4.4 |
+| App 1 table and chart result | Sections 4.1 and 4.4 |
+| App 1 history and comparison | Sections 4.1 and 4.4 |
+| App 2 dashboard and visualisations | Sections 5.1-5.5 |
+| App 2 filters and responsive table | Sections 5.2-5.5 |
+| App 2 what-if | Sections 5.1, 5.2, and 5.5 |
+| App 2 CSV/PDF exports | Sections 5.1-5.5 |
+| Server and Client Components | Section 7.2 |
+| RSC initial data | Section 7.3 |
+| Data-fetching strategy | Section 7.4 |
+| Custom hooks for shared behaviour | Section 9 |
+| Tailwind responsive layouts | Sections 5.4 and 6 |
+| WCAG components | Section 6.2 |
+| Loading states and error boundaries | Section 6.3 |
+| Smooth transitions | Section 11 |
+| Client state and form state | Sections 8 and 9 |
+| API communication and errors | Section 10 |
+| Next.js code organisation | Sections 7, 8, and 12 |
 
 ## 15. Definition of done
 
-Implementation is complete when all of the following are true:
+The frontend is complete when:
 
-- App Router, RSC initial data, clear Server/Client boundaries, custom hooks, and the data-fetching strategy can be verified directly in code.
-- All frontend functions for App 1 and App 2 from the original PDF exist and match the black-box behaviour in sections 3 and 4.
-- The Market UI follows v2 dataset, decimal, cursor, sort, statistics, and export constraints.
-- The UI uses responsive Tailwind CSS layouts, WCAG 2.2 AA semantics, and layered loading/error boundaries.
-- Motion is restrained, interruptible, reduced-motion aware, and does not expand the Client Component boundary without need.
-- The BFF remains a thin trust boundary; business rules remain in the Python and Java backends.
-- Automated tests cover primary success paths, empty results, conflicts, rate limiting, unavailable dependencies, and the export lifecycle.
+- every App 1 and App 2 function in the PDF is available and passes the black-box behaviour in sections 4.4 and 5.5;
+- the App 2 UI obeys v2 dataset, decimal, filter, sort, cursor, statistics, what-if, and export constraints;
+- initial business data is loaded by Server Components, with Client Components limited to interactive islands;
+- smart containers own orchestration and dummy components remain transport- and router-independent;
+- shared hooks contain only cross-feature browser behaviour;
+- responsive Tailwind layouts and WCAG 2.2 AA semantics cover both applications;
+- Motion transitions are short, optional, and reduced-motion aware; and
+- contract, unit, component, integration, E2E, and accessibility checks pass.
