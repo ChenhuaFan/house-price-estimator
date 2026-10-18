@@ -31,7 +31,7 @@ dev = [
 where = ["src"]
 
 [tool.pytest.ini_options]
-addopts = "--strict-markers --cov=model_service --cov-report=term-missing"
+addopts = "--strict-markers --cov=model_service --cov-branch --cov-report=term-missing --cov-report=json:coverage.json"
 testpaths = ["tests"]
 
 [tool.ruff]

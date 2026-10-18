@@ -29,7 +29,7 @@ dev = [
 where = ["src"]
 
 [tool.pytest.ini_options]
-addopts = "--strict-markers --cov=estimator_service --cov-report=term-missing"
+addopts = "--strict-markers --cov=estimator_service --cov-branch --cov-report=term-missing --cov-report=json:coverage.json"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]

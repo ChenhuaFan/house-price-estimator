@@ -25,6 +25,7 @@ target/
 node_modules/
 .next/
 coverage/
+coverage.json
 playwright-report/
 test-results/
 pnpm-debug.log*

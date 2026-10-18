@@ -70,8 +70,9 @@ python-test:
 		docker run --rm \
 			-v hsbc-test-pip-cache:/root/.cache/pip \
 			-v "$(CURDIR)/$$service:/workspace" -w /workspace \
+			-v "$(CURDIR)/scripts:/quality-scripts:ro" \
 			python:3.12.10-slim-bookworm sh -c \
-			'python -m pip install -q -e ".[dev]" && ruff check . && mypy src && pytest'; \
+			'python -m pip install -q -e ".[dev]" && ruff check . && mypy src && pytest && python /quality-scripts/check-python-coverage.py coverage.json'; \
 	done
 
 test: python-test
