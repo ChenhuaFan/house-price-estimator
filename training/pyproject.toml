@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools==75.8.2", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hsbc-housing-training"
+version = "1.0.0"
+description = "Reproducible housing-price model training workspace"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "joblib==1.4.2",
+  "numpy==2.2.4",
+  "psycopg[binary]==3.2.6",
+  "scikit-learn==1.6.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy==1.15.0",
+  "pytest==8.3.5",
+  "pytest-cov==6.0.0",
+  "ruff==0.11.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers --cov=housing_training --cov-report=term-missing"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["housing_training"]

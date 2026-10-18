@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools==75.8.2", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hsbc-estimator-service"
+version = "1.0.0"
+description = "Durable property value estimator backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi==0.115.12",
+  "httpx==0.28.1",
+  "prometheus-client==0.21.1",
+  "psycopg[binary]==3.2.6",
+  "pydantic==2.10.6",
+  "uvicorn[standard]==0.34.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy==1.15.0",
+  "pytest==8.3.5",
+  "pytest-asyncio==0.25.3",
+  "pytest-cov==6.0.0",
+  "ruff==0.11.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers --cov=estimator_service --cov-report=term-missing"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["estimator_service"]
