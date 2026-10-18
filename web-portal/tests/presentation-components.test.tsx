@@ -91,21 +91,13 @@ describe("shared and presentation components", () => {
     expect(formatTimestamp("2026-10-18T10:00:00Z")).toContain("UTC");
   });
 
-  it("shows both the empty and successful estimate result with advisories", () => {
+  it("shows both the empty and successful estimate result", () => {
     const { rerender } = render(<EstimateResult estimate={null} />);
     expect(screen.getByRole("heading", { name: "Ready when you are" })).toBeInTheDocument();
     const result = estimate();
-    result.warnings = [{
-      field: "school_rating",
-      submitted_value: "11",
-      advisory_min: "1",
-      advisory_max: "10",
-      reason: "Outside advisory range.",
-    }];
     rerender(<EstimateResult estimate={result} />);
     expect(screen.getAllByText("$237,354.67").length).toBeGreaterThan(1);
     expect(screen.getByRole("img")).toHaveAccessibleName(/predicted price \$237,354.67/);
-    expect(screen.getByRole("status")).toHaveTextContent("Outside advisory range.");
   });
 
   it("shows comparison only after two properties are selected", () => {

@@ -1,4 +1,3 @@
-import { StatusMessage } from "@/components/ui/status-message";
 import type { Estimate } from "@/lib/api/types";
 import { formatMoney, formatTimestamp } from "@/lib/format";
 
@@ -8,7 +7,7 @@ export function EstimateResult({ estimate }: { estimate: Estimate | null }): Rea
       <section className="card flex min-h-64 flex-col justify-center p-6">
         <p className="eyebrow">Latest result</p>
         <h2 className="mt-1 text-2xl font-semibold text-slate-950">Ready when you are</h2>
-        <p className="mt-2 text-slate-600">Submit a property to see its exact model estimate, visual scale, model version and any advisory notes.</p>
+        <p className="mt-2 text-slate-600">Submit a property to see its exact model estimate, visual scale and model version.</p>
       </section>
     );
   }
@@ -35,13 +34,6 @@ export function EstimateResult({ estimate }: { estimate: Estimate | null }): Rea
           <tbody><tr><td className="font-mono text-xs">{estimate.estimate_id}</td><td>{formatTimestamp(estimate.created_at)}</td><td className="numeric font-semibold">{formatMoney(estimate.predicted_price)}</td></tr></tbody>
         </table>
       </div>
-      {estimate.warnings.map((warning) => (
-        <div className="mt-4" key={`${warning.field}-${warning.submitted_value}`}>
-          <StatusMessage tone="warning" title={`Advisory note for ${warning.field}`} live>
-            Submitted value {warning.submitted_value}; advisory range {warning.advisory_min ?? "—"}–{warning.advisory_max ?? "—"}. {warning.reason}
-          </StatusMessage>
-        </div>
-      ))}
     </section>
   );
 }

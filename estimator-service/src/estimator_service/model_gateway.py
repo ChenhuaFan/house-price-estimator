@@ -7,14 +7,13 @@ from uuid import UUID
 
 import httpx
 
-from .domain import AdvisoryWarning, PropertyInput
+from .domain import PropertyInput
 
 
 @dataclass(frozen=True)
 class ModelPrediction:
     predicted_price: Decimal
     model_version: str
-    warnings: list[AdvisoryWarning]
 
 
 class ModelRejected(Exception):
@@ -81,10 +80,9 @@ class HttpModelGateway:
             model_version = prediction["model_version"]
             if not isinstance(model_version, str) or not model_version:
                 raise ValueError("model service returned an invalid model version")
-            warnings = [AdvisoryWarning.model_validate(item) for item in prediction["warnings"]]
         except (KeyError, IndexError, TypeError, InvalidOperation, ValueError) as error:
             raise ModelUnavailable from error
-        return ModelPrediction(price, model_version, warnings)
+        return ModelPrediction(price, model_version)
 
 
 def _downstream_error(response: httpx.Response) -> tuple[str, str]:

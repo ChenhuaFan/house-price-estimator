@@ -36,7 +36,6 @@ export interface Estimate {
   predicted_price: string;
   currency: "USD";
   model_version: string;
-  warnings: AdvisoryWarning[];
 }
 
 export interface HistoryPage {

@@ -10,7 +10,7 @@ import pytest
 
 from estimator_service import database
 from estimator_service.database import EstimateRepository, IdempotencyConflict
-from estimator_service.domain import AdvisoryWarning, CreateEstimateRequest
+from estimator_service.domain import CreateEstimateRequest
 
 CLIENT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 REQUEST_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -116,28 +116,13 @@ def estimate_row(**overrides: object) -> dict[str, Any]:
     return values
 
 
-def warning_row(**overrides: object) -> dict[str, Any]:
-    values: dict[str, Any] = {
-        "estimate_id": ESTIMATE_ID,
-        "field_name": "school_rating",
-        "submitted_value": Decimal("11"),
-        "advisory_min": Decimal("1"),
-        "advisory_max": Decimal("10"),
-        "reason": "outside advisory range",
-    }
-    values.update(overrides)
-    return values
-
-
 @pytest.mark.asyncio
 async def test_ping_and_find_by_request_cover_missing_and_stored_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ping = Connection([Cursor()])
     missing = Connection([Cursor(one=None)])
-    found = Connection(
-        [Cursor(one=estimate_row()), Cursor(all_rows=[warning_row(advisory_min=None)])]
-    )
+    found = Connection([Cursor(one=estimate_row())])
     install_factory(monkeypatch, ping, missing, found)
     repository = EstimateRepository("postgresql://unused")
 
@@ -147,30 +132,14 @@ async def test_ping_and_find_by_request_cover_missing_and_stored_rows(
 
     assert estimate is not None
     assert estimate.predicted_price == "250000.00"
-    assert estimate.warnings[0].advisory_min is None
-    assert estimate.warnings[0].advisory_max == "10"
 
 
 @pytest.mark.asyncio
-async def test_create_inserts_warning_and_returns_new_estimate(
+async def test_create_returns_new_estimate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    connection = Connection(
-        [
-            Cursor(),
-            Cursor(one=estimate_row()),
-            Cursor(),
-            Cursor(all_rows=[warning_row()]),
-        ]
-    )
+    connection = Connection([Cursor(), Cursor(one=estimate_row())])
     install_factory(monkeypatch, connection)
-    warning = AdvisoryWarning(
-        field="school_rating",
-        submitted_value="11",
-        advisory_min="1",
-        advisory_max="10",
-        reason="outside advisory range",
-    )
 
     estimate, inserted = await EstimateRepository("postgresql://unused").create(
         CLIENT_ID,
@@ -178,21 +147,18 @@ async def test_create_inserts_warning_and_returns_new_estimate(
         CORRELATION_ID,
         Decimal("250000.00"),
         "housing-linear-test",
-        [warning],
     )
 
     assert inserted is True
-    assert estimate.warnings == [warning]
-    assert len(connection.queries) == 4
+    assert estimate.estimate_id == ESTIMATE_ID
+    assert len(connection.queries) == 2
 
 
 @pytest.mark.asyncio
 async def test_create_returns_identical_concurrent_winner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    connection = Connection(
-        [Cursor(), Cursor(one=None), Cursor(one=estimate_row()), Cursor(all_rows=[])]
-    )
+    connection = Connection([Cursor(), Cursor(one=None), Cursor(one=estimate_row())])
     install_factory(monkeypatch, connection)
 
     estimate, inserted = await EstimateRepository("postgresql://unused").create(
@@ -201,7 +167,6 @@ async def test_create_returns_identical_concurrent_winner(
         CORRELATION_ID,
         Decimal("250000.00"),
         "housing-linear-test",
-        [],
     )
 
     assert inserted is False
@@ -231,7 +196,6 @@ async def test_create_rejects_invalid_concurrent_winner(
             CORRELATION_ID,
             Decimal("250000.00"),
             "housing-linear-test",
-            [],
         )
 
 
@@ -245,7 +209,7 @@ async def test_history_supports_empty_and_cursor_paginated_pages(
         estimate_id=UUID("33333333-3333-4333-8333-333333333333"),
         created_at=datetime(2025, 12, 31, tzinfo=UTC),
     )
-    paged = Connection([Cursor(all_rows=[first, second]), Cursor(all_rows=[warning_row()])])
+    paged = Connection([Cursor(all_rows=[first, second])])
     install_factory(monkeypatch, empty, paged)
     repository = EstimateRepository("postgresql://unused")
 
@@ -254,7 +218,6 @@ async def test_history_supports_empty_and_cursor_paginated_pages(
     page = await repository.history(CLIENT_ID, 1, cursor)
 
     assert len(page.items) == 1
-    assert page.items[0].warnings[0].field == "school_rating"
     assert page.next_cursor is not None
     assert database.cursor_decode(page.next_cursor) == (
         first["created_at"],

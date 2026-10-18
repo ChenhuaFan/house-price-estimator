@@ -161,11 +161,11 @@ The service loads one active model per process lifetime. Model activation is an 
 
 The estimator service owns the Property Value Estimator use case.
 
-- It validates the canonical seven fields and advisory rules.
+- It validates the canonical seven fields.
 - It derives history ownership exclusively from the opaque first-party cookie; a body or URL value cannot select another history owner.
 - It performs an idempotency lookup before inference. A matching `(client_id, request_id)` and identical canonical inputs returns the original persisted estimate; reuse with different inputs returns `409 IDEMPOTENCY_KEY_REUSED`.
 - For a new key, it calls `model-service` before opening the estimate-write transaction.
-- A successful model response is stored with the exact returned model version and warnings in one PostgreSQL transaction.
+- A successful model response is stored with the exact returned price and model version in one PostgreSQL transaction.
 - `UNIQUE (client_id, request_id)` prevents duplicate rows. If concurrent requests race after the initial lookup, the uniqueness loser loads the committed winner and applies the same input comparison, returning the winner for identical inputs or `409` for different inputs.
 - History reads use bounded cursor pagination; deletion is scoped by cookie-derived `client_id`.
 - Comparison is a read concern over selected estimate records and requires no separate persisted comparison entity.
@@ -238,8 +238,8 @@ sequenceDiagram
         D-->>E: Not found
         E->>M: POST /api/v1/predict
         M->>M: Infer and validate output domain
-        M-->>E: Price, model version, warnings
-        E->>D: Insert client/estimate/warnings transaction
+        M-->>E: Price and model version
+        E->>D: Insert client/estimate transaction
         alt Insert wins
             D-->>E: Commit
             E-->>W: Persisted estimate DTO
@@ -394,7 +394,7 @@ Because the application has no authentication, LAN and FastAPI-debug modes are e
 | No active model | Model service remains live but not-ready; estimator and what-if calls return a controlled unavailable response |
 | Artifact missing or hash mismatch | Model service refuses readiness and never deserializes the unverified file |
 | Model timeout/domain error | Estimator writes no history; market what-if fails without affecting ordinary market analysis |
-| Estimator database rollback | Idempotency key may be retried; no partial estimate/warning state remains |
+| Estimator database rollback | Idempotency key may be retried; no partial estimate state remains |
 | Market cache loss | Results are recomputed from PostgreSQL; no business state is lost |
 | CSV/PDF rendering failure | Request fails with correlation ID; no durable export job or partial response is advertised as successful |
 | Training phase failure | Existing run becomes `FAILED`, or its local run-state remains pending for registry reconciliation |

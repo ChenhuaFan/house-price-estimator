@@ -104,7 +104,7 @@ The source PDF does not define units, currency, record roles, or validation rang
 
 ## Property Value Estimator requirements
 
-`REQ-EST-001` through `REQ-EST-005` and `REQ-EST-007` are **PDF** requirements. `REQ-EST-006` is **Mixed**: showing previous estimates is required by the PDF, while durability across reloads, browser sessions, and service restarts is a project decision. `REQ-EST-008` through `REQ-EST-011` are **Project decisions** defining durable history behavior and warning retention.
+`REQ-EST-001` through `REQ-EST-005` and `REQ-EST-007` are **PDF** requirements. `REQ-EST-006` is **Mixed**: showing previous estimates is required by the PDF, while durability across reloads, browser sessions, and service restarts is a project decision. `REQ-EST-008` through `REQ-EST-010` are **Project decisions** defining durable history behavior.
 
 - **REQ-EST-001:** Users must be able to enter all property fields used by the prediction model.
 - **REQ-EST-002:** The application must validate property details before submission and display appropriate validation messages.
@@ -116,7 +116,6 @@ The source PDF does not define units, currency, record roles, or validation rang
 - **REQ-EST-008:** Every successful estimate must be persisted with an immutable estimate identifier, creation time in UTC, the seven submitted model inputs, the predicted USD amount, and the model version used for the prediction.
 - **REQ-EST-009:** Estimate history must be shown newest first and support pagination with a default page size of 20 records.
 - **REQ-EST-010:** Persisted estimates must be retained until the user deletes them. Users must be able to delete one estimate or clear their complete estimate history.
-- **REQ-EST-011:** Advisory warnings returned by the prediction service must be shown with the corresponding result and persisted as part of the estimate record.
 
 ## Property Market Analysis requirements
 

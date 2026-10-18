@@ -7,7 +7,7 @@ from typing import Protocol
 from uuid import UUID
 
 from .database import IdempotencyConflict
-from .domain import AdvisoryWarning, CreateEstimateRequest, Estimate, HistoryPage
+from .domain import CreateEstimateRequest, Estimate, HistoryPage
 from .model_gateway import ModelGateway
 
 
@@ -23,7 +23,6 @@ class EstimateStore(Protocol):
         correlation_id: UUID,
         predicted_price: Decimal,
         model_version: str,
-        warnings: list[AdvisoryWarning],
     ) -> tuple[Estimate, bool]: ...
 
     async def history(
@@ -69,7 +68,6 @@ class EstimateApplicationService:
             correlation_id,
             prediction.predicted_price,
             prediction.model_version,
-            prediction.warnings,
         )
         return CreateEstimateResult(estimate, inserted)
 

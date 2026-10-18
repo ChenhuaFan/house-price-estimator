@@ -1,53 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AdvisoryWarning": {
-        "properties": {
-          "advisory_max": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Advisory Max"
-          },
-          "advisory_min": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Advisory Min"
-          },
-          "field": {
-            "title": "Field",
-            "type": "string"
-          },
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          },
-          "submitted_value": {
-            "title": "Submitted Value",
-            "type": "string"
-          }
-        },
-        "required": [
-          "field",
-          "submitted_value",
-          "advisory_min",
-          "advisory_max",
-          "reason"
-        ],
-        "title": "AdvisoryWarning",
-        "type": "object"
-      },
       "CreateEstimateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -160,13 +113,6 @@
             "format": "uuid",
             "title": "Request Id",
             "type": "string"
-          },
-          "warnings": {
-            "items": {
-              "$ref": "#/components/schemas/AdvisoryWarning"
-            },
-            "title": "Warnings",
-            "type": "array"
           }
         },
         "required": [
@@ -175,8 +121,7 @@
           "created_at",
           "inputs",
           "predicted_price",
-          "model_version",
-          "warnings"
+          "model_version"
         ],
         "title": "Estimate",
         "type": "object"

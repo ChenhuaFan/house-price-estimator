@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import psycopg
 from psycopg.rows import dict_row
 
-from .domain import AdvisoryWarning, CreateEstimateRequest, Estimate, HistoryPage, PropertyInput
+from .domain import CreateEstimateRequest, Estimate, HistoryPage, PropertyInput
 
 
 def _cursor_encode(created_at: datetime, estimate_id: UUID) -> str:
@@ -42,7 +42,7 @@ def _same_inputs(row: dict[str, Any], request: CreateEstimateRequest) -> bool:
     ) == request.property_input().canonical_tuple()
 
 
-def _estimate(row: dict[str, Any], warnings: list[dict[str, Any]]) -> Estimate:
+def _estimate(row: dict[str, Any]) -> Estimate:
     return Estimate(
         estimate_id=row["estimate_id"],
         request_id=row["request_id"],
@@ -58,24 +58,6 @@ def _estimate(row: dict[str, Any], warnings: list[dict[str, Any]]) -> Estimate:
         ),
         predicted_price=f"{Decimal(row['predicted_price']):.2f}",
         model_version=row["model_version"],
-        warnings=[
-            AdvisoryWarning(
-                field=warning["field_name"],
-                submitted_value=f"{Decimal(warning['submitted_value']):f}",
-                advisory_min=(
-                    f"{Decimal(warning['advisory_min']):f}"
-                    if warning["advisory_min"] is not None
-                    else None
-                ),
-                advisory_max=(
-                    f"{Decimal(warning['advisory_max']):f}"
-                    if warning["advisory_max"] is not None
-                    else None
-                ),
-                reason=warning["reason"],
-            )
-            for warning in warnings
-        ],
     )
 
 
@@ -102,16 +84,7 @@ class EstimateRepository:
             ).fetchone()
             if row is None:
                 return None
-            warnings = await (
-                await connection.execute(
-                    """
-                    SELECT * FROM estimator.estimate_warnings
-                     WHERE estimate_id = %s ORDER BY warning_order
-                    """,
-                    (row["estimate_id"],),
-                )
-            ).fetchall()
-        return _estimate(dict(row), [dict(item) for item in warnings])
+        return _estimate(dict(row))
 
     async def create(
         self,
@@ -120,7 +93,6 @@ class EstimateRepository:
         correlation_id: UUID,
         predicted_price: Decimal,
         model_version: str,
-        warnings: list[AdvisoryWarning],
     ) -> tuple[Estimate, bool]:
         connection = await psycopg.AsyncConnection.connect(self.database_url, row_factory=dict_row)
         async with connection, connection.transaction():
@@ -177,35 +149,7 @@ class EstimateRepository:
                     raise RuntimeError("concurrent estimate winner was not visible")
                 if not _same_inputs(dict(row), request):
                     raise IdempotencyConflict
-            else:
-                for order, warning in enumerate(warnings, start=1):
-                    await connection.execute(
-                        """
-                            INSERT INTO estimator.estimate_warnings (
-                                estimate_id, warning_order, field_name, submitted_value,
-                                advisory_min, advisory_max, reason
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            """,
-                        (
-                            row["estimate_id"],
-                            order,
-                            warning.field,
-                            Decimal(warning.submitted_value),
-                            Decimal(warning.advisory_min) if warning.advisory_min else None,
-                            Decimal(warning.advisory_max) if warning.advisory_max else None,
-                            warning.reason,
-                        ),
-                    )
-            stored_warnings = await (
-                await connection.execute(
-                    """
-                        SELECT * FROM estimator.estimate_warnings
-                         WHERE estimate_id = %s ORDER BY warning_order
-                        """,
-                    (row["estimate_id"],),
-                )
-            ).fetchall()
-        return _estimate(dict(row), [dict(item) for item in stored_warnings]), inserted
+        return _estimate(dict(row)), inserted
 
     async def history(
         self,
@@ -233,26 +177,7 @@ class EstimateRepository:
                 )
             ).fetchall()
             page_rows = rows[:limit]
-            ids = [row["estimate_id"] for row in page_rows]
-            warning_rows: list[dict[str, Any]] = []
-            if ids:
-                warning_rows = [
-                    dict(item)
-                    for item in await (
-                        await connection.execute(
-                            """
-                            SELECT * FROM estimator.estimate_warnings
-                             WHERE estimate_id = ANY(%s)
-                             ORDER BY estimate_id, warning_order
-                            """,
-                            (ids,),
-                        )
-                    ).fetchall()
-                ]
-        by_estimate: dict[UUID, list[dict[str, Any]]] = {identifier: [] for identifier in ids}
-        for warning in warning_rows:
-            by_estimate[warning["estimate_id"]].append(warning)
-        items = [_estimate(dict(row), by_estimate[row["estimate_id"]]) for row in page_rows]
+        items = [_estimate(dict(row)) for row in page_rows]
         next_cursor = None
         if len(rows) > limit and page_rows:
             last = page_rows[-1]

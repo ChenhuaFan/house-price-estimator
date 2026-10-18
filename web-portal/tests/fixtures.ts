@@ -19,7 +19,6 @@ export function estimate(id = "11111111-1111-4111-8111-111111111111"): Estimate 
     predicted_price: "237354.67",
     currency: "USD",
     model_version: "housing-linear-test",
-    warnings: [],
   };
 }
 

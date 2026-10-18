@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 
 from estimator_service.app import create_app
 from estimator_service.domain import (
-    AdvisoryWarning,
     CreateEstimateRequest,
     Estimate,
     HistoryPage,
@@ -47,7 +46,6 @@ def make_estimate(request: CreateEstimateRequest) -> Estimate:
         inputs=request.property_input(),
         predicted_price="250000.00",
         model_version="housing-linear-test",
-        warnings=[],
     )
 
 
@@ -72,14 +70,13 @@ class FakeStore:
         correlation_id: UUID,
         predicted_price: Decimal,
         model_version: str,
-        warnings: list[AdvisoryWarning],
     ) -> tuple[Estimate, bool]:
         assert client_id == CLIENT_ID
         assert correlation_id == CORRELATION_ID
         assert predicted_price == Decimal("250000.00")
         assert model_version == "housing-linear-test"
         self.create_calls += 1
-        estimate = make_estimate(request).model_copy(update={"warnings": warnings})
+        estimate = make_estimate(request)
         self.estimates[request.request_id] = estimate
         return estimate, True
 
@@ -124,7 +121,7 @@ class FakeModelGateway:
         self.predict_calls += 1
         if self.error is not None:
             raise self.error
-        return ModelPrediction(Decimal("250000.00"), "housing-linear-test", [])
+        return ModelPrediction(Decimal("250000.00"), "housing-linear-test")
 
 
 def api(

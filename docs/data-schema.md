@@ -23,7 +23,7 @@ The source PDF does not require a database or training dashboard. PostgreSQL, ve
 | Per-run evaluation, baseline metrics, and acceptance result | PostgreSQL `ml_registry.training_run_metrics` | Training workspace | `model-service`, operational inspection |
 | Model version, artifact locations, hashes, and lifecycle | PostgreSQL `ml_registry.model_versions` | Controlled registry functions called by training | `model-service`, operational inspection |
 | Model binary and version-matched metadata | `training/artifacts/` persistent filesystem | Training workspace | `model-service` |
-| Anonymous client identity, estimates, and warnings | PostgreSQL `estimator` schema | `estimator-service` | `estimator-service` |
+| Anonymous client identity and estimates | PostgreSQL `estimator` schema | `estimator-service` | `estimator-service` |
 | Active market filters and sort | Browser URL/query state | Web portal | Web portal, market API |
 | Market aggregate results | Derived on demand; optionally Caffeine | `market-service` | Web portal and exports |
 | CSV/PDF export files | Temporary request-scoped storage | `market-service` | Requesting client |
@@ -60,7 +60,7 @@ One PostgreSQL 17 cluster contains three logical schemas.
 | --- | --- | --- |
 | `catalog` | Immutable, versioned central housing data | `dataset_versions`, `housing_records` |
 | `ml_registry` | Training-run, evaluation, and published-model registry | `training_runs`, `training_run_metrics`, `model_versions` |
-| `estimator` | Anonymous estimate history | `clients`, `estimates`, `estimate_warnings` |
+| `estimator` | Anonymous estimate history | `clients`, `estimates` |
 
 ### Runtime Roles
 
@@ -97,7 +97,6 @@ GRANT USAGE ON SCHEMA estimator TO estimator_runtime;
 GRANT SELECT, INSERT ON estimator.clients TO estimator_runtime;
 GRANT UPDATE (last_seen_at) ON estimator.clients TO estimator_runtime;
 GRANT SELECT, INSERT, DELETE ON estimator.estimates TO estimator_runtime;
-GRANT SELECT, INSERT ON estimator.estimate_warnings TO estimator_runtime;
 ```
 
 `V003` separately grants `training_runtime` `EXECUTE` on the exact signatures of `start_run`, `advance_run`, `record_evaluation`, `fail_run`, `register_candidate`, and `promote_model`; revokes their default `PUBLIC` execute privilege; fixes their `search_path`; and schema-qualifies every object they access.
@@ -126,7 +125,6 @@ erDiagram
     ML_TRAINING_RUNS ||--o| ML_MODEL_VERSIONS : produces
     ML_MODEL_VERSIONS ||--o{ ESTIMATOR_ESTIMATES : predicts
     ESTIMATOR_CLIENTS ||--o{ ESTIMATOR_ESTIMATES : owns
-    ESTIMATOR_ESTIMATES ||--o{ ESTIMATOR_ESTIMATE_WARNINGS : contains
 ```
 
 Train/evaluation membership is intentionally absent from this diagram because it is a versioned training artifact, not central business data.
@@ -578,13 +576,9 @@ Stores one successful estimator result. Failed validation and failed predictions
 | `model_version` | `varchar(128)` | No | Foreign key to `ml_registry.model_versions` |
 | `correlation_id` | `uuid` | No | Validated request correlation UUID linking history to service logs |
 
-`UNIQUE (client_id, request_id)` is the storage guard for the estimator's single-property idempotency protocol; the constraint alone does not define the API behavior. Before inference, an existing key with the same seven canonical input values returns the original immutable estimate, including its original price, model version, warnings, and creation time. Reusing the key with different canonical inputs returns `409 IDEMPOTENCY_KEY_REUSED`. When concurrent new requests both pass the initial lookup, the unique-conflict loser loads the committed winner and applies the same comparison. Task 1 batch-prediction calls do not create estimator history. If a future estimator batch-upload feature persists multiple items from one request, it must add a request-item index to the uniqueness key.
+`UNIQUE (client_id, request_id)` is the storage guard for the estimator's single-property idempotency protocol; the constraint alone does not define the API behavior. Before inference, an existing key with the same seven canonical input values returns the original immutable estimate, including its original price, model version, and creation time. Reusing the key with different canonical inputs returns `409 IDEMPOTENCY_KEY_REUSED`. When concurrent new requests both pass the initial lookup, the unique-conflict loser loads the committed winner and applies the same comparison. Task 1 batch-prediction calls do not create estimator history. If a future estimator batch-upload feature persists multiple items from one request, it must add a request-item index to the uniqueness key.
 
-### 10.3 `estimator.estimate_warnings`
-
-Stores zero or more ordered advisory warnings returned with an estimate. The primary key is `(estimate_id, warning_order)` and deletion cascades from the estimate.
-
-### 10.4 Estimator DDL
+### 10.3 Estimator DDL
 
 ```sql
 CREATE SCHEMA IF NOT EXISTS estimator;
@@ -637,53 +631,17 @@ CREATE TABLE estimator.estimates (
 
 CREATE INDEX estimates_history_cursor_idx
     ON estimator.estimates (client_id, created_at DESC, estimate_id DESC);
-
-CREATE TABLE estimator.estimate_warnings (
-    estimate_id uuid NOT NULL
-        REFERENCES estimator.estimates (estimate_id) ON DELETE CASCADE,
-    warning_order smallint NOT NULL CHECK (warning_order >= 1),
-    field_name varchar(64) NOT NULL CHECK (field_name IN (
-        'square_footage',
-        'bedrooms',
-        'bathrooms',
-        'year_built',
-        'lot_size',
-        'distance_to_city_center',
-        'school_rating'
-    )),
-    submitted_value numeric(20,6) NOT NULL CHECK (
-        submitted_value > '-Infinity'::numeric
-        AND submitted_value < 'Infinity'::numeric
-    ),
-    advisory_min numeric(20,6) CHECK (
-        advisory_min IS NULL OR (
-            advisory_min > '-Infinity'::numeric
-            AND advisory_min < 'Infinity'::numeric
-        )
-    ),
-    advisory_max numeric(20,6) CHECK (
-        advisory_max IS NULL OR (
-            advisory_max > '-Infinity'::numeric
-            AND advisory_max < 'Infinity'::numeric
-        )
-    ),
-    reason text NOT NULL CHECK (length(reason) > 0),
-    PRIMARY KEY (estimate_id, warning_order),
-    CONSTRAINT estimate_warning_range_order CHECK (
-        advisory_min IS NULL OR advisory_max IS NULL OR advisory_min <= advisory_max
-    )
-);
 ```
 
-### 10.5 History Lifecycle
+### 10.4 History Lifecycle
 
-- Estimate and warning insertion is one transaction.
+- Each successful estimate is inserted transactionally with its anonymous client association.
 - Idempotent retries return the original estimate and never re-infer after an existing key is found. Concurrent uniqueness conflicts resolve to the committed winner for identical inputs or `409 IDEMPOTENCY_KEY_REUSED` for different inputs.
-- `MODEL_OUTPUT_OUT_OF_DOMAIN` and all other failed predictions create neither an estimate nor a warning row.
+- `MODEL_OUTPUT_OUT_OF_DOMAIN` and all other failed predictions create no estimate row.
 - History is ordered by `(created_at DESC, estimate_id DESC)` and cursor queries also filter by cookie-derived `client_id`.
 - Deleting one estimate uses both `client_id` and `estimate_id`.
 - Clearing history deletes all estimates for the client but retains the anonymous client row.
-- Estimates and warnings are immutable until deletion.
+- Estimates are immutable until deletion.
 - Rows submitted from `Test Data For Prediction.csv` through the Web/API have no special marker; they are ordinary user-input history records associated with the model version that produced them.
 
 ## 11. Artifact Layout
@@ -718,7 +676,10 @@ database/migrations/
   V003__create_ml_registry_tables.sql
   V004__create_estimator_tables.sql
   V005__seed_house_price_dataset_v1.sql
+  V006__drop_estimate_warnings.sql
 ```
+
+`V006` removes the obsolete estimator warning table introduced by the historical `V004` migration. Applied migrations remain immutable; a clean database reaches the same final two-table `estimator` schema after the complete migration chain.
 
 `V005` must:
 
@@ -735,6 +696,7 @@ For a clean environment, the explicit bootstrap order is: apply migrations, expo
 ## 13. Required Integration Tests
 
 - A clean database applies every migration and contains one active `house-price-v1` version with the documented filename, source hash, canonical content hash, and exactly 50 records.
+- The final `estimator` schema contains only `clients` and `estimates`; the obsolete warning table is absent after `V006`.
 - Initialization contains no dataset version, source fingerprint, or migration derived from `Test Data For Prediction.csv`.
 - Runtime grants prevent training and market roles from changing catalog data.
 - Snapshot export for a fixed dataset version is stable in order, row count, and hash.

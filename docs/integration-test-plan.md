@@ -77,9 +77,9 @@ Canonical validation cases include missing values, booleans, numeric strings, fr
 
 | ID | Pri | Method and required assertions |
 | --- | --- | --- |
-| **INT-EST-001 - Successful estimate transaction** | P0 | Submit seven canonical inputs through the estimator to a real or contract-verified model service. Assert downstream price/version/warnings are persisted atomically with immutable estimate ID, UTC timestamp, canonical inputs, request ID, and anonymous client; the DTO exactly matches durable state. A downstream validation, timeout, malformed response, or out-of-domain error creates no estimate or warning row. |
+| **INT-EST-001 - Successful estimate transaction** | P0 | Submit seven canonical inputs through the estimator to a real or contract-verified model service. Assert downstream price and model version are persisted atomically with immutable estimate ID, UTC timestamp, canonical inputs, request ID, and anonymous client; the DTO exactly matches durable state. A downstream validation, timeout, malformed response, or out-of-domain error creates no estimate row. |
 | **INT-EST-002 - Idempotency and concurrent retries** | P1 | Submit the same UUIDv4 request ID and canonical inputs repeatedly, concurrently, and after changing active model version. Assert one model call/row wins and all identical retries return its original result. Reuse the ID with different inputs and assert `409 IDEMPOTENCY_KEY_REUSED` with no inference. Reject malformed or non-v4 request IDs before business processing. |
-| **INT-EST-003 - History pagination, deletion, and isolation** | P0 | Create more than 20 timestamp/UUID-tied rows for Client A and several for Client B. Assert bounded cursor pagination is newest-first, deterministic, and free of gaps/duplicates. Read/delete/clear as each client; assert operations are cookie-scoped and cannot accept an owner override. Single delete cascades warnings only for that estimate; clear affects only the caller; restart preserves remaining rows. |
+| **INT-EST-003 - History pagination, deletion, and isolation** | P0 | Create more than 20 timestamp/UUID-tied rows for Client A and several for Client B. Assert bounded cursor pagination is newest-first, deterministic, and free of gaps/duplicates. Read/delete/clear as each client; assert operations are cookie-scoped and cannot accept an owner override. Single delete affects only that estimate; clear affects only the caller; restart preserves remaining rows. |
 
 ## 9. Market-service integration cases
 
@@ -129,7 +129,7 @@ Every requirement in [`requirements.md`](requirements.md) is mapped below. An E2
 | `REQ-PRED-005` | `E2E-T1-001`, `INT-MODEL-001` |
 | `REQ-PRED-006` | `E2E-T1-001`, `INT-CONTRACT-001` |
 | `REQ-PRED-007` | `E2E-T1-005`, `E2E-EST-002`, `INT-MODEL-003` |
-| `REQ-PRED-008` | `E2E-T1-005`, `E2E-EST-003`, `INT-MODEL-003` |
+| `REQ-PRED-008` | `E2E-T1-005`, `E2E-MARKET-003`, `INT-MODEL-003` |
 | `REQ-PRED-009` | `E2E-FAIL-001`, `INT-MODEL-004`, `INT-EST-001` |
 
 ### 12.2 Training, evaluation, and model registry
@@ -154,12 +154,12 @@ Every requirement in [`requirements.md`](requirements.md) is mapped below. An E2
 | Requirement | Primary verification |
 | --- | --- |
 | `REQ-DATA-001` | `E2E-MARKET-001`, `INT-DB-001`, `INT-MARKET-001` |
-| `REQ-DATA-002` | `E2E-T1-003`, `E2E-EST-007`, `INT-DB-001`, `INT-TRAIN-002` |
+| `REQ-DATA-002` | `E2E-T1-003`, `E2E-EST-006`, `INT-DB-001`, `INT-TRAIN-002` |
 | `REQ-DATA-003` | `E2E-EST-001`, `INT-MODEL-003`, `INT-CONTRACT-001` |
 | `REQ-DATA-004` | `E2E-T1-005`, `E2E-EST-002`, `INT-MODEL-003` |
 | `REQ-DATA-005` | `E2E-T1-005`, `INT-MODEL-003` |
 | `REQ-DATA-006` | `E2E-EST-001`, `E2E-MARKET-004`, `E2E-MARKET-005`, `INT-MODEL-004`, `INT-MARKET-005`, `INT-MARKET-006` |
-| `REQ-DATA-007` | `E2E-EST-003`, `E2E-MARKET-003`, `INT-MODEL-003` |
+| `REQ-DATA-007` | `E2E-T1-005`, `E2E-MARKET-003`, `INT-MODEL-003` |
 
 ### 12.4 Property Value Estimator
 
@@ -170,12 +170,11 @@ Every requirement in [`requirements.md`](requirements.md) is mapped below. An E2
 | `REQ-EST-003` | `E2E-EST-001`, `INT-EST-001` |
 | `REQ-EST-004` | `E2E-EST-001` |
 | `REQ-EST-005` | `E2E-EST-001`, `E2E-UX-002` |
-| `REQ-EST-006` | `E2E-EST-004`, `INT-EST-003`, `INT-DEPLOY-002` |
-| `REQ-EST-007` | `E2E-EST-006`, `INT-PORTAL-002` |
-| `REQ-EST-008` | `E2E-EST-001`, `E2E-EST-008`, `INT-EST-001`, `INT-EST-002` |
-| `REQ-EST-009` | `E2E-EST-005`, `INT-EST-003` |
-| `REQ-EST-010` | `E2E-EST-005`, `INT-EST-003` |
-| `REQ-EST-011` | `E2E-EST-003`, `INT-EST-001`, `INT-EST-003` |
+| `REQ-EST-006` | `E2E-EST-003`, `INT-EST-003`, `INT-DEPLOY-002` |
+| `REQ-EST-007` | `E2E-EST-005`, `INT-PORTAL-002` |
+| `REQ-EST-008` | `E2E-EST-001`, `E2E-EST-007`, `INT-EST-001`, `INT-EST-002` |
+| `REQ-EST-009` | `E2E-EST-004`, `INT-EST-003` |
+| `REQ-EST-010` | `E2E-EST-004`, `INT-EST-003` |
 
 ### 12.5 Property Market Analysis
 
@@ -219,7 +218,7 @@ The source PDF also contains technology, architecture, UI, and delivery clauses 
 | Both Task 2 applications interact with the Task 1 model | `E2E-EST-001`, `E2E-MARKET-003`, `INT-EST-001`, `INT-MARKET-004` |
 | Shared layout/navigation and consistent design | `E2E-PORTAL-001`, `E2E-PORTAL-003` |
 | App Router and layout-level loading/error states | `E2E-PORTAL-001`, `E2E-PORTAL-002`, `INT-PORTAL-002` |
-| Estimator all-field form, validation, table, chart, history, and comparison | `E2E-EST-001` through `E2E-EST-006` |
+| Estimator all-field form, validation, table, chart, history, and comparison | `E2E-EST-001` through `E2E-EST-005` |
 | Python estimator form handling, model integration, validation, and errors | `INT-EST-001`, `INT-PORTAL-001`, `E2E-EST-002`, `E2E-FAIL-001` |
 | Market dashboard, visualisations, segment filters, what-if, exports, and responsive sortable/filterable table | `E2E-MARKET-001` through `E2E-MARKET-005`, `E2E-UX-001` |
 | Java REST endpoints, aggregates, shared-model integration, and caching | `INT-MARKET-001` through `INT-MARKET-004`, `INT-CONTRACT-001` |

@@ -124,17 +124,6 @@ test.describe("unified portal user journeys", () => {
     await clearHistory(page);
   });
 
-  test("retains advisory warnings with the persisted estimate", async ({ page }) => {
-    await page.goto("/estimator");
-    await fillProperty(page, "estimate", { ...propertyA, school_rating: "11" });
-    await page.getByRole("button", { name: "Estimate value" }).click();
-    await expect(page.getByRole("status")).toContainText("Advisory note for school_rating");
-    await page.reload();
-    await historySection(page).getByRole("button", { name: "View" }).first().click();
-    await expect(page.getByRole("status")).toContainText("Submitted value 11");
-    await clearHistory(page);
-  });
-
   test("paginates, deletes one record, and clears a 21-record history", async ({ browserName, page }) => {
     test.skip(browserName !== "chromium", "The history stress journey runs once in Chromium.");
     await page.goto("/estimator");

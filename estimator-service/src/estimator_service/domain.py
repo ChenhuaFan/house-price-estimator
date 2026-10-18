@@ -90,14 +90,6 @@ class CreateEstimateRequest(PropertyInput):
         return PropertyInput.model_validate(self.model_dump(exclude={"request_id"}))
 
 
-class AdvisoryWarning(BaseModel):
-    field: str
-    submitted_value: str
-    advisory_min: str | None
-    advisory_max: str | None
-    reason: str
-
-
 class Estimate(BaseModel):
     estimate_id: UUID
     request_id: UUID
@@ -106,7 +98,6 @@ class Estimate(BaseModel):
     predicted_price: str
     currency: Literal["USD"] = "USD"
     model_version: str
-    warnings: list[AdvisoryWarning]
 
 
 class HistoryPage(BaseModel):

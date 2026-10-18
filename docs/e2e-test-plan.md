@@ -153,42 +153,35 @@ These rules are applied to all relevant cases in addition to the case-specific r
 - **Procedure:** Attempt submission with no values, then with the missing-field, invalid-integer, invalid-step, and excess-scale variants. Correct one field at a time and submit Property A.
 - **Expected:** The client blocks known-invalid submissions; each error is associated with its field and announced; valid values remain intact; server validation remains authoritative if client checks are bypassed; correction clears the relevant error and the final valid submission succeeds once.
 
-### E2E-EST-003 - Display and retain an advisory warning
-
-- **Priority:** P1
-- **Covers:** `REQ-PRED-008`, `REQ-DATA-007`, `REQ-EST-011`
-- **Procedure:** Submit the advisory property, reload the page, and reopen the result from history.
-- **Expected:** Prediction succeeds; a non-blocking warning identifies `school_rating`, value `11`, range `1-10`, and the reason; the warning remains attached to the same persisted estimate after reload and is not styled as a fatal error.
-
-### E2E-EST-004 - Retain history across reload, browser restart, and service restart
+### E2E-EST-003 - Retain history across reload, browser restart, and service restart
 
 - **Priority:** P0
 - **Covers:** `REQ-EST-006`, `REQ-EST-008`
 - **Procedure:** Create estimates for Properties A and B, reload, close and reopen a persistent browser context, restart the portal and estimator services without removing volumes, and reopen Estimator.
-- **Expected:** The same history is restored at every stage with identical IDs, inputs, prices, timestamps, versions, and warnings. Browser local/session storage is not required to reconstruct it.
+- **Expected:** The same history is restored at every stage with identical IDs, inputs, prices, timestamps, and model versions. Browser local/session storage is not required to reconstruct it.
 
-### E2E-EST-005 - Paginate, delete, and clear history
+### E2E-EST-004 - Paginate, delete, and clear history
 
 - **Priority:** P1
 - **Covers:** `REQ-EST-009`, `REQ-EST-010`
 - **Procedure:** Create or prepare 21 estimates through the public estimator path for one browser identity, verify the first page, navigate to the next page, delete one selected estimate, cancel and then confirm clear-history.
 - **Expected:** Results are newest first with 20 on the default page; cursor navigation has no duplicate or missing item; single delete removes only the selected estimate; cancelled clear changes nothing; confirmed clear removes the current client's complete history and leaves a useful empty state.
 
-### E2E-EST-006 - Compare multiple properties side by side
+### E2E-EST-005 - Compare multiple properties side by side
 
 - **Priority:** P0
 - **Covers:** `REQ-EST-007`
 - **Procedure:** Select estimates for Properties A and B from history and open comparison; add and remove a property if the UI supports more than two.
 - **Expected:** The comparison shows aligned, labelled inputs and exact predicted prices side by side; differences are understandable without relying on colour; the source estimates are unchanged; removing a comparison item does not delete history.
 
-### E2E-EST-007 - Exercise the supplied demonstration fixture
+### E2E-EST-006 - Exercise the supplied demonstration fixture
 
 - **Priority:** P1
 - **Covers:** `REQ-DATA-002`, `REQ-EST-003`, `REQ-EST-006`
 - **Procedure:** Submit each row from `Test Data For Prediction.csv` through the browser-supported estimator workflow in a clean client session.
 - **Expected:** Every valid row receives a prediction and ordinary history record; the UI never presents those rows as known actual prices; the market dashboard's source count remains 50.
 
-### E2E-EST-008 - Prevent duplicate history on repeated submission
+### E2E-EST-007 - Prevent duplicate history on repeated submission
 
 - **Priority:** P1
 - **Covers:** idempotency and reliability constraints; `REQ-EST-008`
