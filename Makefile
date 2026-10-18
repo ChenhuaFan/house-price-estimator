@@ -5,7 +5,7 @@ DATASET_VERSION_ID ?= 00000000-0000-4000-8000-000000000001
 GIT_COMMIT_SHA ?= $(shell git rev-parse HEAD)
 export GIT_COMMIT_SHA
 
-.PHONY: build db-migrate train publish bootstrap up up-lan up-debug down smoke python-test test e2e verify
+.PHONY: build db-migrate train publish bootstrap up up-lan up-debug down smoke python-test test e2e contracts-update contracts-validate verify
 
 build:
 	$(COMPOSE) build
@@ -82,10 +82,17 @@ test: python-test
 e2e:
 	cd web-portal && pnpm test:e2e
 
+contracts-update:
+	python3 scripts/openapi-contracts.py update
+
+contracts-validate:
+	python3 scripts/openapi-contracts.py validate
+
 verify: test
 	$(COMPOSE) config --quiet
 	$(COMPOSE) -f compose.yaml -f compose.api-debug.yaml config --quiet
 	$(COMPOSE) -f compose.yaml -f compose.lan.yaml config --quiet
 	$(COMPOSE) --profile training build
 	$(MAKE) bootstrap
+	$(MAKE) contracts-validate
 	$(MAKE) e2e

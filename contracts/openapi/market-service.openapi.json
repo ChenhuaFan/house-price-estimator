@@ -1,0 +1,461 @@
+{
+  "components": {
+    "schemas": {
+      "Aggregates": {
+        "properties": {
+          "averagePrice": {
+            "type": "number"
+          },
+          "averageSquareFootage": {
+            "type": "number"
+          },
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "maximumPrice": {
+            "type": "number"
+          },
+          "minimumPrice": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "ChartPoint": {
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "MarketAnalysis": {
+        "properties": {
+          "aggregates": {
+            "$ref": "#/components/schemas/Aggregates"
+          },
+          "charts": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ChartPoint"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          },
+          "datasetContentSha256": {
+            "type": "string"
+          },
+          "datasetVersionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "matchingCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "page": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/PropertyRecord"
+            },
+            "type": "array"
+          },
+          "size": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "MarketQueryParameters": {
+        "properties": {
+          "bathroomsMax": {
+            "type": "number"
+          },
+          "bathroomsMin": {
+            "type": "number"
+          },
+          "bedroomsMax": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "bedroomsMin": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "datasetVersionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "distanceMax": {
+            "type": "number"
+          },
+          "distanceMin": {
+            "type": "number"
+          },
+          "lotSizeMax": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lotSizeMin": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "page": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "priceMax": {
+            "type": "number"
+          },
+          "priceMin": {
+            "type": "number"
+          },
+          "schoolRatingMax": {
+            "type": "number"
+          },
+          "schoolRatingMin": {
+            "type": "number"
+          },
+          "size": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sort": {
+            "type": "string"
+          },
+          "squareFootageMax": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "squareFootageMin": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "yearBuiltMax": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "yearBuiltMin": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Prediction": {
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "model_version": {
+            "type": "string"
+          },
+          "predicted_price": {
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "PropertyInput": {
+        "properties": {
+          "bathrooms": {
+            "minimum": 0.5,
+            "type": "number"
+          },
+          "bedrooms": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "distance_to_city_center": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "lot_size": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "school_rating": {
+            "type": "number"
+          },
+          "square_footage": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "year_built": {
+            "format": "int32",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bathrooms",
+          "bedrooms",
+          "distance_to_city_center",
+          "lot_size",
+          "school_rating",
+          "square_footage",
+          "year_built"
+        ],
+        "type": "object"
+      },
+      "PropertyRecord": {
+        "properties": {
+          "bathrooms": {
+            "type": "number"
+          },
+          "bedrooms": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "distanceToCityCenter": {
+            "type": "number"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lotSize": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "price": {
+            "type": "number"
+          },
+          "schoolRating": {
+            "type": "number"
+          },
+          "squareFootage": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "yearBuilt": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Warning": {
+        "properties": {
+          "advisory_max": {
+            "type": "string"
+          },
+          "advisory_min": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "submitted_value": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WhatIfResponse": {
+        "properties": {
+          "inputs": {
+            "$ref": "#/components/schemas/PropertyInput"
+          },
+          "prediction": {
+            "$ref": "#/components/schemas/Prediction"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "OpenAPI definition",
+    "version": "v0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/market/analysis": {
+      "get": {
+        "operationId": "analysis",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "parameters",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MarketQueryParameters"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketAnalysis"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "market-controller"
+        ]
+      }
+    },
+    "/api/v1/market/exports/data.csv": {
+      "get": {
+        "operationId": "csv",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "parameters",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MarketQueryParameters"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "format": "byte",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "market-controller"
+        ]
+      }
+    },
+    "/api/v1/market/exports/report.pdf": {
+      "post": {
+        "operationId": "pdf",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "parameters",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MarketQueryParameters"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhatIfResponse"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "byte",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "market-controller"
+        ]
+      }
+    },
+    "/api/v1/market/what-if": {
+      "post": {
+        "operationId": "whatIf",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PropertyInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatIfResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "market-controller"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "live",
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "market-controller"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "description": "Generated server url",
+      "url": "http://127.0.0.1:8080"
+    }
+  ]
+}
