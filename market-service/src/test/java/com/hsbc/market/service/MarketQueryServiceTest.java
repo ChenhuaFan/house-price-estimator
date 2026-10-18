@@ -16,10 +16,12 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.cache.concurrent.ConcurrentMapCache;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.cache.support.NoOpCache;
 
 class MarketQueryServiceTest {
   private static final UUID VERSION = UUID.fromString("00000000-0000-4000-8000-000000000001");
@@ -189,6 +191,55 @@ class MarketQueryServiceTest {
   }
 
   @Test
+  void cacheKeysSeparateEveryQueryDimensionAndRestartOrDisablePreservesResults() {
+    AtomicReference<MarketDomain.DatasetVersion> activeVersion =
+        new AtomicReference<>(new MarketDomain.DatasetVersion(VERSION, "a".repeat(64)));
+    when(marketReadDao.resolveDatasetVersion(any())).thenAnswer(ignored -> activeVersion.get());
+    var sharedCache = new ConcurrentMapCache("firstPage");
+    MarketQueryService cached = service(sharedCache);
+    MarketDomain.Selection base = selection(MarketDomain.SortField.PRICE);
+
+    MarketDomain.PropertyPage baseline = cached.list(base, 2, null);
+    assertThat(cached.list(base, 2, null)).isEqualTo(baseline);
+
+    MarketDomain.Filters filtered =
+        new MarketDomain.Filters(
+            MarketDomain.Range.of(new BigDecimal("200000.00"), null),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    cached.list(
+        new MarketDomain.Selection(
+            VERSION,
+            filtered,
+            new MarketDomain.Sort(MarketDomain.SortField.PRICE, MarketDomain.SortDirection.ASC)),
+        2,
+        null);
+    cached.list(selection(MarketDomain.SortField.SQUARE_FOOTAGE), 2, null);
+    cached.list(base, 3, null);
+
+    UUID activatedId = UUID.fromString("00000000-0000-4000-8000-000000000002");
+    activeVersion.set(new MarketDomain.DatasetVersion(activatedId, "b".repeat(64)));
+    MarketDomain.PropertyPage activated = cached.list(base, 2, null);
+    assertThat(activated.datasetVersion()).isEqualTo(activeVersion.get());
+    assertThat(activated.items()).isEqualTo(baseline.items());
+    verify(marketReadDao, times(5)).listPage(any(), any(), anyInt());
+
+    MarketQueryService restarted = service(new ConcurrentMapCache("firstPage"));
+    assertThat(restarted.list(base, 2, null)).isEqualTo(activated);
+    verify(marketReadDao, times(6)).listPage(any(), any(), anyInt());
+
+    MarketQueryService cacheDisabled = service(new NoOpCache("firstPage"));
+    assertThat(cacheDisabled.list(base, 2, null)).isEqualTo(activated);
+    assertThat(cacheDisabled.list(base, 2, null)).isEqualTo(activated);
+    verify(marketReadDao, times(8)).listPage(any(), any(), anyInt());
+  }
+
+  @Test
   void rejectsEveryInvalidStatisticsShapeAndPageLimit() {
     assertThatThrownBy(
             () -> marketQueryService.list(selection(MarketDomain.SortField.PRICE), 0, null))
@@ -272,6 +323,13 @@ class MarketQueryServiceTest {
         VERSION,
         MarketDomain.Filters.empty(),
         new MarketDomain.Sort(field, MarketDomain.SortDirection.ASC));
+  }
+
+  private MarketQueryService service(org.springframework.cache.Cache cache) {
+    return new MarketQueryService(
+        marketReadDao,
+        new SignedCursorCodec("a-test-secret-that-is-longer-than-thirty-two-characters"),
+        cache);
   }
 
   private static MarketDomain.PropertyRecord row(long id, long price, long squareFootage) {

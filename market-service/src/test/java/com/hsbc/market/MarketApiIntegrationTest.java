@@ -20,6 +20,7 @@ import com.hsbc.market.service.ExportWorkerService;
 import com.lowagie.text.pdf.PdfReader;
 import com.lowagie.text.pdf.parser.PdfTextExtractor;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.awt.image.BufferedImage;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -36,6 +37,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionTemplate;
@@ -421,6 +426,7 @@ class MarketApiIntegrationTest {
             .andReturn()
             .getResponse()
             .getContentAsByteArray();
+    assertEveryPageRendersWithinBounds(pdf);
     try (PdfReader reader = new PdfReader(pdf)) {
       assertThat(reader.getPageSizeWithRotation(1).getWidth())
           .isGreaterThan(reader.getPageSizeWithRotation(1).getHeight());
@@ -549,6 +555,7 @@ class MarketApiIntegrationTest {
         .isEqualByComparingTo(BigDecimal.valueOf(filteredCount));
     assertThat(pdfJob.path("row_count").asLong()).isEqualTo(filteredCount);
     byte[] pdf = download(pdfId, "application/pdf");
+    assertEveryPageRendersWithinBounds(pdf);
     assertThat(pdf).startsWith("%PDF".getBytes(StandardCharsets.US_ASCII));
     assertThat(sha256(pdf)).isEqualTo(pdfJob.path("content_sha256").asText());
     assertThat(pdfJob.path("detail_row_count").asLong()).isEqualTo(10);
@@ -587,6 +594,7 @@ class MarketApiIntegrationTest {
     assertThat(exportWorker.runOnce()).isTrue();
     UUID whatIfPdfId = UUID.fromString(whatIfPdfCreated.path("export_id").asText());
     byte[] whatIfPdf = download(whatIfPdfId, "application/pdf");
+    assertEveryPageRendersWithinBounds(whatIfPdf);
     assertThat(getExport(whatIfPdfId).path("row_count").asLong()).isEqualTo(50);
     try (PdfReader reader = new PdfReader(whatIfPdf)) {
       assertThat(reader.getPageSizeWithRotation(1).getWidth())
@@ -606,6 +614,7 @@ class MarketApiIntegrationTest {
     assertThat(exportWorker.runOnce()).isTrue();
     UUID emptyPdfId = UUID.fromString(emptyPdfCreated.path("export_id").asText());
     byte[] emptyPdf = download(emptyPdfId, "application/pdf");
+    assertEveryPageRendersWithinBounds(emptyPdf);
     assertThat(getExport(emptyPdfId).path("row_count").asLong()).isZero();
     try (PdfReader reader = new PdfReader(emptyPdf)) {
       assertThat(new PdfTextExtractor(reader).getTextFromPage(1)).contains("Matching records", "0");
@@ -851,6 +860,48 @@ class MarketApiIntegrationTest {
 
   private static String sha256(byte[] content) throws Exception {
     return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+  }
+
+  private static void assertEveryPageRendersWithinBounds(byte[] content) throws Exception {
+    try (PDDocument document = Loader.loadPDF(content)) {
+      PDFRenderer renderer = new PDFRenderer(document);
+      assertThat(document.getNumberOfPages()).isPositive();
+      for (int pageIndex = 0; pageIndex < document.getNumberOfPages(); pageIndex++) {
+        BufferedImage image = renderer.renderImageWithDPI(pageIndex, 96, ImageType.RGB);
+        assertThat(image.getWidth()).isGreaterThan(image.getHeight());
+
+        int minX = image.getWidth();
+        int minY = image.getHeight();
+        int maxX = -1;
+        int maxY = -1;
+        int inkPixels = 0;
+        for (int y = 0; y < image.getHeight(); y++) {
+          for (int x = 0; x < image.getWidth(); x++) {
+            int rgb = image.getRGB(x, y);
+            int red = (rgb >>> 16) & 0xff;
+            int green = (rgb >>> 8) & 0xff;
+            int blue = rgb & 0xff;
+            if (red + green + blue < 735) {
+              inkPixels++;
+              minX = Math.min(minX, x);
+              minY = Math.min(minY, y);
+              maxX = Math.max(maxX, x);
+              maxY = Math.max(maxY, y);
+            }
+          }
+        }
+
+        assertThat(inkPixels).as("page %s must not be blank", pageIndex + 1).isGreaterThan(100);
+        assertThat(minX).as("page %s left content bound", pageIndex + 1).isGreaterThan(4);
+        assertThat(minY).as("page %s top content bound", pageIndex + 1).isGreaterThan(4);
+        assertThat(maxX)
+            .as("page %s right content bound", pageIndex + 1)
+            .isLessThan(image.getWidth() - 5);
+        assertThat(maxY)
+            .as("page %s bottom content bound", pageIndex + 1)
+            .isLessThan(image.getHeight() - 5);
+      }
+    }
   }
 
   private static Path sourceContract() {

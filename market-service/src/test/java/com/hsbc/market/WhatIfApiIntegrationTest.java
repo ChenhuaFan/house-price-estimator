@@ -2,6 +2,7 @@ package com.hsbc.market;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -79,5 +80,31 @@ class WhatIfApiIntegrationTest {
                 .content(REQUEST.replace("\"square_footage\":1800", "\"square_footage\":0")))
         .andExpect(status().isUnprocessableEntity())
         .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+  }
+
+  @Test
+  void whatIfResultsAreNotCachedAcrossModelVersions() throws Exception {
+    UUID correlationId = UUID.randomUUID();
+    when(modelServiceClient.predict(any(), eq(correlationId)))
+        .thenReturn(
+            new Prediction(new BigDecimal("310000.00"), "USD", "model-v1", List.of()),
+            new Prediction(new BigDecimal("320000.00"), "USD", "model-v2", List.of()));
+
+    mvc.perform(
+            post("/api/v2/market/what-if")
+                .header("X-Correlation-ID", correlationId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(REQUEST))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.prediction.model_version").value("model-v1"));
+    mvc.perform(
+            post("/api/v2/market/what-if")
+                .header("X-Correlation-ID", correlationId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(REQUEST))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.prediction.model_version").value("model-v2"));
+
+    verify(modelServiceClient, times(2)).predict(any(), eq(correlationId));
   }
 }
