@@ -249,11 +249,14 @@
     FROM catalog.housing_records
     <where><include refid="filters"/></where>
     <if test="parameters.groupBy != null">
-      GROUP BY <include refid="groupExpression"/>
+      GROUP BY 1, 2, 3, 4
       ORDER BY
       <choose>
         <when test="parameters.order == null or parameters.order.by == 'group_key'">
-          <include refid="groupExpression"/>
+          <choose>
+            <when test="parameters.groupBy.fixedWidth == null">1</when>
+            <otherwise>2</otherwise>
+          </choose>
         </when>
         <otherwise>
           <foreach collection="parameters.metrics" item="metric">

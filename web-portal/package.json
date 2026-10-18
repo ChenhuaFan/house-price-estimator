@@ -15,7 +15,8 @@
     "test": "vitest run --coverage",
     "test:unit": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test --project=chromium",
+    "test:e2e": "pnpm test:e2e:live && pnpm test:e2e:mock",
+    "test:e2e:live": "playwright test tests/e2e/model-api.spec.ts --project=chromium",
     "test:e2e:mock": "E2E_MOCKS=1 playwright test --project=chromium",
     "generate:market-contract": "openapi-typescript ../docs/openapi/market-service-v2.yaml -o lib/api/market-v2.generated.ts",
     "test:e2e:all": "playwright test"

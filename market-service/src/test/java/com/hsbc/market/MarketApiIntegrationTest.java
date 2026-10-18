@@ -138,6 +138,15 @@ class MarketApiIntegrationTest {
   }
 
   @Test
+  void runtimeOpenApiDocumentIsAvailable() throws Exception {
+    JsonNode document =
+        json(mvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn());
+
+    assertThat(document.path("openapi").asText()).startsWith("3.");
+    assertThat(document.path("paths").has("/api/v2/market/properties")).isTrue();
+  }
+
+  @Test
   void everySortPagesWithoutDuplicatesOrGapsInBothDirections() throws Exception {
     for (String field : SORT_FIELDS) {
       for (String direction : List.of("asc", "desc")) {
@@ -344,6 +353,41 @@ class MarketApiIntegrationTest {
           .isEqualTo(expectedGroups.get(index).getKey());
       assertThat(metricInGroup(group, "property_count").longValueExact())
           .isEqualTo(expectedGroups.get(index).getValue());
+    }
+
+    JsonNode fixedWidthGroups =
+        json(
+            mvc.perform(
+                    post("/api/v2/market/statistics/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {"scope":{"dataset_version_id":"%s"},
+                             "metrics":[{"id":"property_count","method":"COUNT","field":"*"}],
+                             "group_by":{"field":"school_rating","bucket":{"method":"FIXED_WIDTH","width":"2.000"}},
+                             "order":{"by":"group_key","direction":"asc"},"limit":100}
+                            """
+                                .formatted(DATASET_ID)))
+                .andExpect(status().isOk())
+                .andReturn());
+    var expectedFixedWidthGroups =
+        jdbc.query(
+            """
+            SELECT floor(school_rating / 2.000) * 2.000 AS lower_bound, count(*)
+            FROM catalog.housing_records
+            WHERE dataset_version_id = ? GROUP BY 1 ORDER BY 1
+            """,
+            (row, index) -> Map.entry(row.getBigDecimal(1), row.getLong(2)),
+            DATASET_ID);
+    assertThat(fixedWidthGroups.path("groups")).hasSize(expectedFixedWidthGroups.size());
+    for (int index = 0; index < expectedFixedWidthGroups.size(); index++) {
+      JsonNode group = fixedWidthGroups.path("groups").get(index);
+      BigDecimal lowerBound = expectedFixedWidthGroups.get(index).getKey();
+      assertThat(new BigDecimal(group.at("/key/gte").asText())).isEqualByComparingTo(lowerBound);
+      assertThat(new BigDecimal(group.at("/key/lt").asText()))
+          .isEqualByComparingTo(lowerBound.add(new BigDecimal("2.000")));
+      assertThat(metricInGroup(group, "property_count").longValueExact())
+          .isEqualTo(expectedFixedWidthGroups.get(index).getValue());
     }
   }
 

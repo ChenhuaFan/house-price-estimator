@@ -1,6 +1,36 @@
 {
   "components": {
     "schemas": {
+      "AdvisoryWarning": {
+        "properties": {
+          "advisory_maximum": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          },
+          "advisory_minimum": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "submitted_value": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "advisory_maximum",
+          "advisory_minimum",
+          "field",
+          "message",
+          "submitted_value"
+        ],
+        "type": "object"
+      },
       "Aggregates": {
         "properties": {
           "averagePrice": {
@@ -29,6 +59,217 @@
           },
           "value": {
             "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "DatasetVersion": {
+        "properties": {
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_sha256",
+          "id"
+        ],
+        "type": "object"
+      },
+      "DecimalRange": {
+        "properties": {
+          "gte": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          },
+          "lte": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ExportCreateRequest": {
+        "properties": {
+          "format": {
+            "enum": [
+              "CSV",
+              "PDF"
+            ],
+            "type": "string"
+          },
+          "pdf_options": {
+            "$ref": "#/components/schemas/PdfOptions"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/MarketSelection"
+          }
+        },
+        "required": [
+          "format",
+          "selection"
+        ],
+        "type": "object"
+      },
+      "ExportJob": {
+        "properties": {
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "content_length": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "detail_row_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "details_truncated": {
+            "type": "boolean"
+          },
+          "download_url": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "export_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "failure_code": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "CSV",
+              "PDF"
+            ],
+            "type": "string"
+          },
+          "query_fingerprint": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "row_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED",
+              "CANCELLED",
+              "EXPIRED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "expires_at",
+          "export_id",
+          "format",
+          "query_fingerprint",
+          "status"
+        ],
+        "type": "object"
+      },
+      "FixedWidthBucket": {
+        "properties": {
+          "method": {
+            "enum": [
+              "FIXED_WIDTH"
+            ],
+            "type": "string"
+          },
+          "width": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "width"
+        ],
+        "type": "object"
+      },
+      "GroupBy": {
+        "properties": {
+          "bucket": {
+            "$ref": "#/components/schemas/FixedWidthBucket"
+          },
+          "field": {
+            "enum": [
+              "price",
+              "square_footage",
+              "bedrooms",
+              "bathrooms",
+              "year_built",
+              "lot_size",
+              "distance_to_city_center",
+              "school_rating"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "type": "object"
+      },
+      "GroupOrder": {
+        "properties": {
+          "by": {
+            "pattern": "^(group_key|[a-z][a-z0-9_]{0,63})$",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "by",
+          "direction"
+        ],
+        "type": "object"
+      },
+      "IntegerRange": {
+        "properties": {
+          "gte": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lte": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "type": "object"
@@ -75,7 +316,484 @@
         },
         "type": "object"
       },
-      "MarketQueryParameters": {
+      "MarketFilters": {
+        "properties": {
+          "bathrooms": {
+            "$ref": "#/components/schemas/DecimalRange"
+          },
+          "bedrooms": {
+            "$ref": "#/components/schemas/IntegerRange"
+          },
+          "distance_to_city_center": {
+            "$ref": "#/components/schemas/DecimalRange"
+          },
+          "lot_size": {
+            "$ref": "#/components/schemas/IntegerRange"
+          },
+          "price": {
+            "$ref": "#/components/schemas/DecimalRange"
+          },
+          "school_rating": {
+            "$ref": "#/components/schemas/DecimalRange"
+          },
+          "square_footage": {
+            "$ref": "#/components/schemas/IntegerRange"
+          },
+          "year_built": {
+            "$ref": "#/components/schemas/IntegerRange"
+          }
+        },
+        "type": "object"
+      },
+      "MarketScope": {
+        "properties": {
+          "dataset_version_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/MarketFilters"
+          }
+        },
+        "type": "object"
+      },
+      "MarketSelection": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/MarketScope"
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/SortItem"
+            },
+            "maxItems": 1,
+            "minItems": 0,
+            "type": "array"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "type": "object"
+      },
+      "MetricRequest": {
+        "properties": {
+          "field": {
+            "enum": [
+              "*",
+              "source_id",
+              "price",
+              "square_footage",
+              "bedrooms",
+              "bathrooms",
+              "year_built",
+              "lot_size",
+              "distance_to_city_center",
+              "school_rating"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "COUNT",
+              "SUM",
+              "AVG",
+              "MIN",
+              "MAX",
+              "STDDEV_POP"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "id",
+          "method"
+        ],
+        "type": "object"
+      },
+      "PageMetadata": {
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "limit": {
+            "format": "int32",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "has_more",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "PdfOptions": {
+        "properties": {
+          "detail_limit": {
+            "format": "int32",
+            "maximum": 5000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "include_details": {
+            "type": "boolean"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricRequest"
+            },
+            "maxItems": 20,
+            "minItems": 0,
+            "type": "array"
+          },
+          "template": {
+            "enum": [
+              "market-analysis-v1"
+            ],
+            "type": "string"
+          },
+          "what_if": {
+            "$ref": "#/components/schemas/WhatIfResponse"
+          }
+        },
+        "type": "object"
+      },
+      "Prediction": {
+        "properties": {
+          "currency": {
+            "enum": [
+              "USD"
+            ],
+            "type": "string"
+          },
+          "model_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "predicted_price": {
+            "pattern": "^(0|[1-9][0-9]{0,15})\\.[0-9]{2}$",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/AdvisoryWarning"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "currency",
+          "model_version",
+          "predicted_price",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "PropertyInput": {
+        "properties": {
+          "bathrooms": {
+            "pattern": "^(0|[1-9][0-9]{0,10})\\.[0-9]$",
+            "type": "string"
+          },
+          "bedrooms": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "distance_to_city_center": {
+            "pattern": "^(0|[1-9][0-9]{0,8})\\.[0-9]{3}$",
+            "type": "string"
+          },
+          "lot_size": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "school_rating": {
+            "pattern": "^(0|[1-9][0-9]{0,8})\\.[0-9]{3}$",
+            "type": "string"
+          },
+          "square_footage": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "year_built": {
+            "format": "int32",
+            "maximum": 9999,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bathrooms",
+          "bedrooms",
+          "distance_to_city_center",
+          "lot_size",
+          "school_rating",
+          "square_footage",
+          "year_built"
+        ],
+        "type": "object"
+      },
+      "PropertyPage": {
+        "properties": {
+          "dataset_version": {
+            "$ref": "#/components/schemas/DatasetVersion"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PropertyRecord"
+            },
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetadata"
+          },
+          "query_fingerprint": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_version",
+          "items",
+          "page",
+          "query_fingerprint"
+        ],
+        "type": "object"
+      },
+      "PropertyRecord": {
+        "properties": {
+          "bathrooms": {
+            "pattern": "^(0|[1-9][0-9]{0,10})\\.[0-9]$",
+            "type": "string"
+          },
+          "bedrooms": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "distance_to_city_center": {
+            "pattern": "^(0|[1-9][0-9]{0,8})\\.[0-9]{3}$",
+            "type": "string"
+          },
+          "lot_size": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "price": {
+            "pattern": "^(0|[1-9][0-9]{0,15})\\.[0-9]{2}$",
+            "type": "string"
+          },
+          "school_rating": {
+            "pattern": "^(0|[1-9][0-9]{0,8})\\.[0-9]{3}$",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "square_footage": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "year_built": {
+            "format": "int32",
+            "maximum": 9999,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bathrooms",
+          "bedrooms",
+          "distance_to_city_center",
+          "lot_size",
+          "price",
+          "school_rating",
+          "source_id",
+          "square_footage",
+          "year_built"
+        ],
+        "type": "object"
+      },
+      "SortItem": {
+        "properties": {
+          "direction": {
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "source_id",
+              "price",
+              "square_footage",
+              "bedrooms",
+              "bathrooms",
+              "year_built",
+              "lot_size",
+              "distance_to_city_center",
+              "school_rating"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "field"
+        ],
+        "type": "object"
+      },
+      "StatisticValue": {
+        "properties": {
+          "metric_id": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric_id"
+        ],
+        "type": "object"
+      },
+      "StatisticsGroup": {
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/StatisticsGroupKey"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/StatisticValue"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "values"
+        ],
+        "type": "object"
+      },
+      "StatisticsGroupKey": {
+        "properties": {
+          "exact_value": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "price",
+              "square_footage",
+              "bedrooms",
+              "bathrooms",
+              "year_built",
+              "lot_size",
+              "distance_to_city_center",
+              "school_rating"
+            ],
+            "type": "string"
+          },
+          "gte": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 128,
+            "minLength": 0,
+            "type": "string"
+          },
+          "lt": {
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "StatisticsQuery": {
+        "properties": {
+          "group_by": {
+            "$ref": "#/components/schemas/GroupBy"
+          },
+          "limit": {
+            "format": "int32",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricRequest"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          },
+          "order": {
+            "$ref": "#/components/schemas/GroupOrder"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MarketScope"
+          }
+        },
+        "required": [
+          "metrics",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "StatisticsResponse": {
+        "properties": {
+          "dataset_version": {
+            "$ref": "#/components/schemas/DatasetVersion"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/StatisticsGroup"
+            },
+            "maxItems": 200,
+            "minItems": 0,
+            "type": "array"
+          },
+          "query_fingerprint": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_version",
+          "groups",
+          "query_fingerprint"
+        ],
+        "type": "object"
+      },
+      "StreamingResponseBody": {
+        "type": "object"
+      },
+      "V1QueryParameters": {
         "properties": {
           "bathroomsMax": {
             "type": "number"
@@ -154,130 +872,6 @@
         },
         "type": "object"
       },
-      "Prediction": {
-        "properties": {
-          "currency": {
-            "type": "string"
-          },
-          "model_version": {
-            "type": "string"
-          },
-          "predicted_price": {
-            "type": "string"
-          },
-          "warnings": {
-            "items": {
-              "$ref": "#/components/schemas/Warning"
-            },
-            "type": "array"
-          }
-        },
-        "type": "object"
-      },
-      "PropertyInput": {
-        "properties": {
-          "bathrooms": {
-            "minimum": 0.5,
-            "type": "number"
-          },
-          "bedrooms": {
-            "format": "int32",
-            "maximum": 2147483647,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "distance_to_city_center": {
-            "minimum": 0,
-            "type": "number"
-          },
-          "lot_size": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "school_rating": {
-            "type": "number"
-          },
-          "square_footage": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "year_built": {
-            "format": "int32",
-            "maximum": 2147483647,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "bathrooms",
-          "bedrooms",
-          "distance_to_city_center",
-          "lot_size",
-          "school_rating",
-          "square_footage",
-          "year_built"
-        ],
-        "type": "object"
-      },
-      "PropertyRecord": {
-        "properties": {
-          "bathrooms": {
-            "type": "number"
-          },
-          "bedrooms": {
-            "format": "int32",
-            "type": "integer"
-          },
-          "distanceToCityCenter": {
-            "type": "number"
-          },
-          "id": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "lotSize": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "price": {
-            "type": "number"
-          },
-          "schoolRating": {
-            "type": "number"
-          },
-          "squareFootage": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "yearBuilt": {
-            "format": "int32",
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "Warning": {
-        "properties": {
-          "advisory_max": {
-            "type": "string"
-          },
-          "advisory_min": {
-            "type": "string"
-          },
-          "field": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "submitted_value": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "WhatIfResponse": {
         "properties": {
           "inputs": {
@@ -287,6 +881,10 @@
             "$ref": "#/components/schemas/Prediction"
           }
         },
+        "required": [
+          "inputs",
+          "prediction"
+        ],
         "type": "object"
       }
     }
@@ -299,6 +897,7 @@
   "paths": {
     "/api/v1/market/analysis": {
       "get": {
+        "deprecated": true,
         "operationId": "analysis",
         "parameters": [
           {
@@ -306,7 +905,7 @@
             "name": "parameters",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/MarketQueryParameters"
+              "$ref": "#/components/schemas/V1QueryParameters"
             }
           }
         ],
@@ -323,12 +922,13 @@
           }
         },
         "tags": [
-          "market-controller"
+          "v-1-compatibility-controller"
         ]
       }
     },
     "/api/v1/market/exports/data.csv": {
       "get": {
+        "deprecated": true,
         "operationId": "csv",
         "parameters": [
           {
@@ -336,7 +936,7 @@
             "name": "parameters",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/MarketQueryParameters"
+              "$ref": "#/components/schemas/V1QueryParameters"
             }
           }
         ],
@@ -345,8 +945,7 @@
             "content": {
               "text/csv": {
                 "schema": {
-                  "format": "byte",
-                  "type": "string"
+                  "$ref": "#/components/schemas/StreamingResponseBody"
                 }
               }
             },
@@ -354,12 +953,13 @@
           }
         },
         "tags": [
-          "market-controller"
+          "v-1-compatibility-controller"
         ]
       }
     },
     "/api/v1/market/exports/report.pdf": {
       "post": {
+        "deprecated": true,
         "operationId": "pdf",
         "parameters": [
           {
@@ -367,7 +967,7 @@
             "name": "parameters",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/MarketQueryParameters"
+              "$ref": "#/components/schemas/V1QueryParameters"
             }
           }
         ],
@@ -385,8 +985,7 @@
             "content": {
               "application/pdf": {
                 "schema": {
-                  "format": "byte",
-                  "type": "string"
+                  "$ref": "#/components/schemas/StreamingResponseBody"
                 }
               }
             },
@@ -394,12 +993,13 @@
           }
         },
         "tags": [
-          "market-controller"
+          "v-1-compatibility-controller"
         ]
       }
     },
     "/api/v1/market/what-if": {
       "post": {
+        "deprecated": true,
         "operationId": "whatIf",
         "requestBody": {
           "content": {
@@ -424,12 +1024,494 @@
           }
         },
         "tags": [
-          "market-controller"
+          "v-1-compatibility-controller"
+        ]
+      }
+    },
+    "/api/v2/market/exports": {
+      "post": {
+        "operationId": "createExport",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Correlation-ID",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJob"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "exports-api-controller"
+        ]
+      }
+    },
+    "/api/v2/market/exports/{export_id}": {
+      "delete": {
+        "operationId": "cancelExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Correlation-ID",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "exports-api-controller"
+        ]
+      },
+      "get": {
+        "operationId": "getExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Correlation-ID",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJob"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "exports-api-controller"
+        ]
+      }
+    },
+    "/api/v2/market/exports/{export_id}/content": {
+      "get": {
+        "operationId": "downloadExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Correlation-ID",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "exports-api-controller"
+        ]
+      }
+    },
+    "/api/v2/market/properties": {
+      "get": {
+        "operationId": "listProperties",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Correlation-ID",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dataset_version_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "price_gte",
+            "required": false,
+            "schema": {
+              "pattern": "^(0|[1-9][0-9]{0,15})\\.[0-9]{2}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "price_lte",
+            "required": false,
+            "schema": {
+              "pattern": "^(0|[1-9][0-9]{0,15})\\.[0-9]{2}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "square_footage_gte",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "square_footage_lte",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bedrooms_gte",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bedrooms_lte",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bathrooms_gte",
+            "required": false,
+            "schema": {
+              "pattern": "^(0|[1-9][0-9]{0,10})\\.[0-9]$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bathrooms_lte",
+            "required": false,
+            "schema": {
+              "pattern": "^(0|[1-9][0-9]{0,10})\\.[0-9]$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "year_built_gte",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "maximum": 9999,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "year_built_lte",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "maximum": 9999,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lot_size_gte",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lot_size_lte",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "distance_to_city_center_gte",
+            "required": false,
+            "schema": {
+              "pattern": "^(0|[1-9][0-9]{0,8})\\.[0-9]{3}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "distance_to_city_center_lte",
+            "required": false,
+            "schema": {
+              "pattern": "^(0|[1-9][0-9]{0,8})\\.[0-9]{3}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "school_rating_gte",
+            "required": false,
+            "schema": {
+              "pattern": "^(0|[1-9][0-9]{0,8})\\.[0-9]{3}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "school_rating_lte",
+            "required": false,
+            "schema": {
+              "pattern": "^(0|[1-9][0-9]{0,8})\\.[0-9]{3}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "source_id:asc",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "format": "int32",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropertyPage"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "properties-api-controller"
+        ]
+      }
+    },
+    "/api/v2/market/statistics/query": {
+      "post": {
+        "operationId": "queryStatistics",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Correlation-ID",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatisticsQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatisticsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "statistics-api-controller"
+        ]
+      }
+    },
+    "/api/v2/market/what-if": {
+      "post": {
+        "operationId": "calculateWhatIf",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Correlation-ID",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PropertyInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatIfResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "what-if-api-controller"
         ]
       }
     },
     "/health/live": {
       "get": {
+        "deprecated": true,
         "operationId": "live",
         "responses": {
           "200": {
@@ -447,7 +1529,7 @@
           }
         },
         "tags": [
-          "market-controller"
+          "v-1-compatibility-controller"
         ]
       }
     }
