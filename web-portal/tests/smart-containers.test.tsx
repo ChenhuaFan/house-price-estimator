@@ -6,23 +6,20 @@ import { EstimatorWorkspace } from "@/features/estimator/estimator-workspace";
 import { MarketDashboard } from "@/features/market/market-dashboard";
 import { estimate, marketPageModel } from "@/tests/fixtures";
 
-const navigation = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }));
 const estimatorApi = vi.hoisted(() => ({ create: vi.fn(), load: vi.fn(), remove: vi.fn(), clear: vi.fn() }));
-const marketApi = vi.hoisted(() => ({ createExport: vi.fn(), getExport: vi.fn(), cancelExport: vi.fn(), runWhatIf: vi.fn() }));
+const marketApi = vi.hoisted(() => ({ loadDashboard: vi.fn(), createExport: vi.fn(), getExport: vi.fn(), cancelExport: vi.fn(), runWhatIf: vi.fn() }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
 vi.mock("@/features/estimator/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/features/estimator/api")>();
   return { ...actual, createEstimate: estimatorApi.create, loadHistory: estimatorApi.load, deleteEstimate: estimatorApi.remove, clearEstimateHistory: estimatorApi.clear };
 });
 vi.mock("@/features/market/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/features/market/api")>();
-  return { ...actual, createExport: marketApi.createExport, getExport: marketApi.getExport, cancelExport: marketApi.cancelExport, runWhatIf: marketApi.runWhatIf };
+  return { ...actual, loadMarketDashboard: marketApi.loadDashboard, createExport: marketApi.createExport, getExport: marketApi.getExport, cancelExport: marketApi.cancelExport, runWhatIf: marketApi.runWhatIf };
 });
 
 describe("smart screen containers", () => {
   beforeEach(() => {
-    Object.values(navigation).forEach((mock) => mock.mockReset());
     Object.values(estimatorApi).forEach((mock) => mock.mockReset());
     Object.values(marketApi).forEach((mock) => mock.mockReset());
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { callback(0); return 1; });
@@ -58,9 +55,18 @@ describe("smart screen containers", () => {
     expect(screen.getByText("No estimates yet")).toBeInTheDocument();
   });
 
-  it("commits market state to the router and queues asynchronous exports", async () => {
+  it("updates market state in place and queues asynchronous exports", async () => {
     const user = userEvent.setup();
     const job = { export_id: "11111111-1111-4111-8111-111111111111", status: "QUEUED" as const, format: "CSV" as const, query_fingerprint: marketPageModel.queryFingerprint, created_at: "2026-10-19T00:00:00Z", expires_at: "2026-10-20T00:00:00Z" };
+    marketApi.loadDashboard.mockImplementation(async (params: URLSearchParams) => ({
+      ...marketPageModel,
+      query: {
+        ...marketPageModel.query,
+        ...(params.get("price_gte") ? { price_gte: "250000.00" } : {}),
+        sort: params.get("sort") ?? marketPageModel.query.sort,
+        ...(params.get("cursor") ? { cursor: params.get("cursor")! } : {}),
+      },
+    }));
     marketApi.createExport.mockResolvedValue({ job, retryAfterSeconds: 10 });
     marketApi.getExport.mockResolvedValue({ job: { ...job, status: "SUCCEEDED" }, retryAfterSeconds: 2 });
     render(<MotionProvider><MarketDashboard initialModel={{ ...marketPageModel, query: { ...marketPageModel.query, cursor: "current-cursor" } }} /></MotionProvider>);
@@ -68,13 +74,14 @@ describe("smart screen containers", () => {
     await user.click(screen.getByText(/Market filters/));
     await user.type(screen.getByLabelText("Actual price minimum"), "250000");
     await user.click(screen.getByRole("button", { name: "Apply filters" }));
-    expect(navigation.push).toHaveBeenCalledWith(expect.stringContaining("price_gte=250000"), { scroll: false });
+    await waitFor(() => expect(marketApi.loadDashboard).toHaveBeenCalled());
+    expect((marketApi.loadDashboard.mock.calls[0]?.[0] as URLSearchParams).toString()).toContain("price_gte=250000");
     await user.click(screen.getByRole("button", { name: /Actual price/ }));
-    expect(navigation.push).toHaveBeenCalledWith(expect.stringContaining("sort=price%3Aasc"), { scroll: false });
+    await waitFor(() => expect((marketApi.loadDashboard.mock.calls.at(-1)?.[0] as URLSearchParams).get("sort")).toBe("price:asc"));
     await user.click(screen.getByRole("button", { name: "Next results" }));
-    expect(navigation.push).toHaveBeenCalledWith(expect.stringContaining("cursor=opaque-next"), { scroll: false });
+    await waitFor(() => expect((marketApi.loadDashboard.mock.calls.at(-1)?.[0] as URLSearchParams).get("cursor")).toBe("opaque-next"));
     await user.click(screen.getByRole("button", { name: "Previous results" }));
-    expect(navigation.back).toHaveBeenCalledOnce();
+    await waitFor(() => expect((marketApi.loadDashboard.mock.calls.at(-1)?.[0] as URLSearchParams).has("cursor")).toBe(false));
 
     await user.click(screen.getByRole("button", { name: "Export CSV" }));
     await waitFor(() => expect(marketApi.createExport).toHaveBeenCalledOnce());

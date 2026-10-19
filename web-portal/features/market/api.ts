@@ -1,5 +1,5 @@
 /** Browser API client for isolated what-if and asynchronous export actions. */
-import type { ApiErrorBody, ExportJob, PropertyInput, WhatIfResponse } from "@/lib/api/types";
+import type { ApiErrorBody, ExportJob, MarketPageModel, PropertyInput, WhatIfResponse } from "@/lib/api/types";
 import type { ExportCreateRequestWire, WhatIfResponseWire } from "@/features/market/model";
 import { PortalApiError } from "@/features/estimator/api";
 
@@ -37,6 +37,20 @@ function whatIfInput(input: PropertyInput): WhatIfResponseWire["inputs"] {
     distance_to_city_center: input.distance_to_city_center.toFixed(3),
     school_rating: input.school_rating.toFixed(3),
   };
+}
+
+/** Loads a complete dashboard model without starting a new App Router render. */
+export async function loadMarketDashboard(
+  query: URLSearchParams,
+  signal?: AbortSignal,
+): Promise<MarketPageModel> {
+  const suffix = query.toString();
+  const response = await fetch(suffix ? `/api/market/dashboard?${suffix}` : "/api/market/dashboard", {
+    cache: "no-store",
+    headers: correlationHeaders(),
+    signal,
+  });
+  return parseResponse<MarketPageModel>(response);
 }
 
 /** Requests a model prediction without persisting estimator history. */

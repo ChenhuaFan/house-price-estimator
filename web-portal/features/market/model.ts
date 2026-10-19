@@ -24,6 +24,53 @@ export const marketFilterKeys = [
   "school_rating_gte", "school_rating_lte",
 ] as const;
 
+type MarketFilterKey = (typeof marketFilterKeys)[number];
+
+const integerFilterBounds: Partial<Record<MarketFilterKey, { minimum: string; maximum: string }>> = {
+  square_footage_gte: { minimum: "1", maximum: "9223372036854775807" },
+  square_footage_lte: { minimum: "1", maximum: "9223372036854775807" },
+  bedrooms_gte: { minimum: "0", maximum: "2147483647" },
+  bedrooms_lte: { minimum: "0", maximum: "2147483647" },
+  year_built_gte: { minimum: "1", maximum: "9999" },
+  year_built_lte: { minimum: "1", maximum: "9999" },
+  lot_size_gte: { minimum: "0", maximum: "9223372036854775807" },
+  lot_size_lte: { minimum: "0", maximum: "9223372036854775807" },
+};
+
+const decimalFilterFormats: Partial<Record<MarketFilterKey, { scale: number; maximumWholeDigits: number }>> = {
+  price_gte: { scale: 2, maximumWholeDigits: 16 },
+  price_lte: { scale: 2, maximumWholeDigits: 16 },
+  bathrooms_gte: { scale: 1, maximumWholeDigits: 11 },
+  bathrooms_lte: { scale: 1, maximumWholeDigits: 11 },
+  distance_to_city_center_gte: { scale: 3, maximumWholeDigits: 9 },
+  distance_to_city_center_lte: { scale: 3, maximumWholeDigits: 9 },
+  school_rating_gte: { scale: 3, maximumWholeDigits: 9 },
+  school_rating_lte: { scale: 3, maximumWholeDigits: 9 },
+};
+
+function normalizedFilterValue(key: MarketFilterKey, value: string): string | undefined {
+  const integerBounds = integerFilterBounds[key];
+  if (integerBounds) {
+    if (!/^\d+$/.test(value)) return undefined;
+    const normalized = value.replace(/^0+(?=\d)/, "");
+    const atLeastMinimum = normalized.length > integerBounds.minimum.length
+      || (normalized.length === integerBounds.minimum.length && normalized >= integerBounds.minimum);
+    const atMostMaximum = normalized.length < integerBounds.maximum.length
+      || (normalized.length === integerBounds.maximum.length && normalized <= integerBounds.maximum);
+    return atLeastMinimum && atMostMaximum
+      ? normalized
+      : undefined;
+  }
+
+  const format = decimalFilterFormats[key];
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(value);
+  if (!format || !match) return undefined;
+  const whole = match[1]!.replace(/^0+(?=\d)/, "");
+  const fraction = match[2] ?? "";
+  if (whole.length > format.maximumWholeDigits || fraction.length > format.scale) return undefined;
+  return `${whole}.${fraction.padEnd(format.scale, "0")}`;
+}
+
 const allowedSort = new Set([
   "source_id", "price", "square_footage", "bedrooms", "bathrooms",
   "year_built", "lot_size", "distance_to_city_center", "school_rating",
@@ -40,7 +87,9 @@ export function parseMarketQuery(
   const query: MarketQueryState = { sort: "source_id:asc", limit: 20 };
   for (const key of marketFilterKeys) {
     const value = first(input[key]);
-    if (value && value.length <= 64 && /^\d+(?:\.\d+)?$/.test(value)) query[key] = value;
+    if (!value || value.length > 64) continue;
+    const normalized = normalizedFilterValue(key, value);
+    if (normalized !== undefined) query[key] = normalized;
   }
   const requestedSort = first(input.sort);
   if (requestedSort) {

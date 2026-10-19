@@ -6,6 +6,7 @@ import { GET as health } from "@/app/api/health/route";
 import { DELETE as clearHistory, GET as getHistory, POST as createEstimate } from "@/app/api/estimator/estimates/route";
 import { DELETE as deleteEstimate } from "@/app/api/estimator/estimates/[estimateId]/route";
 import { GET as properties } from "@/app/api/market/properties/route";
+import { GET as dashboard } from "@/app/api/market/dashboard/route";
 import { POST as statistics } from "@/app/api/market/statistics/route";
 import { POST as whatIf } from "@/app/api/market/what-if/route";
 import { POST as createExport } from "@/app/api/market/exports/route";
@@ -81,6 +82,28 @@ describe("portal route handlers", () => {
     vi.stubGlobal("fetch", fetchMock);
     await properties(apiRequest("/api/market/properties?price_gte=100000.00&cursor=opaque%2Fvalue&bad-key=no"));
     expect((fetchMock.mock.calls[0]?.[0] as URL).toString()).toBe("http://market:8080/api/v2/market/properties?price_gte=100000.00&cursor=opaque%2Fvalue");
+  });
+
+  it("assembles a version-pinned dashboard for post-hydration client reads", async () => {
+    const dataset = { id: "00000000-0000-4000-8000-000000000001", content_sha256: "a".repeat(64) };
+    const propertyPage = {
+      dataset_version: dataset,
+      query_fingerprint: `sha256:${"b".repeat(64)}`,
+      items: [],
+      page: { limit: 20, has_more: false },
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(propertyPage), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ dataset_version: dataset, query_fingerprint: "overview", groups: [{ key: {}, values: [{ metric_id: "count", value: "0" }] }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ dataset_version: dataset, query_fingerprint: "bedrooms", groups: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ dataset_version: dataset, query_fingerprint: "schools", groups: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await dashboard(apiRequest("/api/market/dashboard?price_gte=250000"));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ overview: { count: "0" }, query: { price_gte: "250000.00" } });
+    expect((fetchMock.mock.calls[0]?.[0] as URL).searchParams.get("price_gte")).toBe("250000.00");
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("forwards v2 JSON mutations and the export idempotency key", async () => {

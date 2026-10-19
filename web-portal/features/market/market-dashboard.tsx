@@ -1,11 +1,10 @@
 "use client";
 
-/** Smart container for URL navigation, what-if state, and background export jobs. */
-import { useEffect, useReducer, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+/** Smart container for dynamic dashboard reads, what-if state, and background export jobs. */
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ExportFormat, ExportJob, MarketPageModel, WhatIfResponse } from "@/lib/api/types";
 import { PortalApiError } from "@/features/estimator/api";
-import { cancelExport, createExport, getExport } from "@/features/market/api";
+import { cancelExport, createExport, getExport, loadMarketDashboard } from "@/features/market/api";
 import { MarketDashboardView } from "@/features/market/market-dashboard-view";
 import { marketFilterKeys, marketSelection } from "@/features/market/model";
 import type { MarketFilterValues } from "@/features/market/filter-form";
@@ -35,13 +34,16 @@ const terminalStatuses = new Set(["SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED"]
 
 /** Coordinates client interactions while keeping the server-rendered dashboard visible. */
 export function MarketDashboard({ initialModel }: { initialModel: MarketPageModel }): React.ReactElement {
-  const router = useRouter();
-  const [isNavigating, startNavigation] = useTransition();
+  const [model, setModel] = useState(initialModel);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [dashboardError, setDashboardError] = useState<PortalApiError | null>(null);
   const [whatIf, setWhatIf] = useState<WhatIfResponse | null>(null);
   const [exports, dispatchExport] = useReducer(exportReducer, []);
   const [exportError, setExportError] = useState<PortalApiError | null>(null);
   const [creatingFormat, setCreatingFormat] = useState<ExportFormat | null>(null);
   const [announcement, announce] = useLiveAnnouncement();
+  const dashboardRequest = useRef<AbortController | null>(null);
+  const pageTrail = useRef<string[]>([]);
 
   useEffect(() => {
     const active = exports.filter((item) => !terminalStatuses.has(item.job.status));
@@ -89,25 +91,65 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
     };
   }, [exports]);
 
-  function navigate(params: URLSearchParams, replace = false): void {
-    const suffix = params.toString();
+  const updateDashboard = useCallback(async (
+    params: URLSearchParams,
+    historyMode: "push" | "replace" | "none" = "push",
+  ): Promise<void> => {
+    dashboardRequest.current?.abort();
+    const controller = new AbortController();
+    dashboardRequest.current = controller;
+    setIsNavigating(true);
+    setDashboardError(null);
 
-    startNavigation(() => {
-      if (replace) router.replace(suffix ? `/market?${suffix}` : "/market", { scroll: false });
-      else router.push(suffix ? `/market?${suffix}` : "/market", { scroll: false });
-    });
-  }
+    try {
+      const next = await loadMarketDashboard(params, controller.signal);
+      if (controller.signal.aborted) return;
+      setModel(next);
+
+      const suffix = params.toString();
+      const target = suffix ? `/market?${suffix}` : "/market";
+      if (historyMode === "push") {
+        pageTrail.current.push(`${window.location.pathname}${window.location.search}`);
+        window.history.pushState(null, "", target);
+      } else if (historyMode === "replace") {
+        window.history.replaceState(null, "", target);
+      }
+      announce("Market dashboard updated.");
+    } catch (requestError) {
+      if (requestError instanceof Error && requestError.name === "AbortError") return;
+      setDashboardError(requestError instanceof PortalApiError
+        ? requestError
+        : new PortalApiError("The dashboard could not be updated. Please retry.", "DASHBOARD_UPDATE_FAILED"));
+    } finally {
+      if (dashboardRequest.current === controller) {
+        dashboardRequest.current = null;
+        setIsNavigating(false);
+      }
+    }
+  }, [announce]);
+
+  useEffect(() => () => dashboardRequest.current?.abort(), []);
+
+  useEffect(() => {
+    function restoreFromHistory(): void {
+      if (window.location.pathname === "/market") {
+        void updateDashboard(new URLSearchParams(window.location.search), "none");
+      }
+    }
+    window.addEventListener("popstate", restoreFromHistory);
+    return () => window.removeEventListener("popstate", restoreFromHistory);
+  }, [updateDashboard]);
 
   function baseParams(): URLSearchParams {
     const params = new URLSearchParams();
     for (const key of marketFilterKeys) {
-      const value = initialModel.query[key];
+      const value = model.query[key];
       if (value) params.set(key, String(value));
     }
 
-    params.set("sort", initialModel.query.sort);
-    params.set("limit", String(initialModel.query.limit));
-    params.set("dataset_version_id", initialModel.datasetVersion.id);
+    params.set("sort", model.query.sort);
+    params.set("limit", String(model.query.limit));
+    params.set("dataset_version_id", model.datasetVersion.id);
     return params;
   }
 
@@ -120,33 +162,46 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
     }
 
     params.delete("cursor");
-    navigate(params);
+    void updateDashboard(params);
   }
 
   function resetFilters(): void {
     const params = new URLSearchParams({
-      sort: initialModel.query.sort,
-      limit: String(initialModel.query.limit),
-      dataset_version_id: initialModel.datasetVersion.id,
+      sort: model.query.sort,
+      limit: String(model.query.limit),
+      dataset_version_id: model.datasetVersion.id,
     });
-    navigate(params);
+    void updateDashboard(params);
   }
 
   function sortBy(column: string): void {
     const params = baseParams();
-    const [currentField, currentDirection] = initialModel.query.sort.split(":");
+    const [currentField, currentDirection] = model.query.sort.split(":");
 
     params.set("sort", `${column}:${currentField === column && currentDirection === "asc" ? "desc" : "asc"}`);
     params.delete("cursor");
-    navigate(params);
+    void updateDashboard(params);
   }
 
   function nextPage(): void {
-    if (!initialModel.page.nextCursor) return;
+    if (!model.page.nextCursor) return;
 
     const params = baseParams();
-    params.set("cursor", initialModel.page.nextCursor);
-    navigate(params);
+    params.set("cursor", model.page.nextCursor);
+    void updateDashboard(params);
+  }
+
+  function previousPage(): void {
+    const previous = pageTrail.current.pop();
+    if (previous) {
+      const url = new URL(previous, window.location.origin);
+      void updateDashboard(url.searchParams, "replace");
+      return;
+    }
+
+    const params = baseParams();
+    params.delete("cursor");
+    void updateDashboard(params, "replace");
   }
 
   async function startExport(format: ExportFormat): Promise<void> {
@@ -156,7 +211,7 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
     try {
       const request = {
         format,
-        selection: marketSelection(initialModel),
+        selection: marketSelection(model),
         ...(format === "PDF"
           ? {
               pdf_options: {
@@ -208,19 +263,20 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
 
   return (
     <MarketDashboardView
-      model={initialModel}
-      values={initialModel.query}
+      model={model}
+      values={model.query}
       navigating={isNavigating}
       whatIf={whatIf}
       exports={exports.map((item) => item.job)}
       creatingFormat={creatingFormat}
+      dashboardError={dashboardError}
       exportError={exportError}
       announcement={announcement}
       onApplyFilters={applyFilters}
       onResetFilters={resetFilters}
       onSort={sortBy}
       onNext={nextPage}
-      onBack={() => router.back()}
+      onBack={previousPage}
       onExport={startExport}
       onCancelExport={cancel}
       onDismissExport={(id) => dispatchExport({ type: "remove", id })}

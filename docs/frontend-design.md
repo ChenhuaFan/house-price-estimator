@@ -283,7 +283,7 @@ A Client Component boundary should be placed around the smallest interactive are
 
 The table can render as soon as the property page is available. Independent chart sections may stream behind `Suspense` after the version is known. The browser must not repeat these initial requests in `useEffect`.
 
-Server Components call server-only data-access functions directly. They do not make an HTTP request to the portal's own Route Handlers. Browser-originated API mutations use same-origin Route Handlers as a thin backend-for-frontend boundary; URL navigation starts a new Server Component render.
+Server Components call server-only data-access functions directly for the first render. They do not make an HTTP request to the portal's own Route Handlers. Once the interactive screen is hydrated, browser-originated reads and mutations use same-origin Route Handlers as a thin backend-for-frontend boundary. Filter, sort, and cursor changes update the dashboard model in place and synchronise the URL with the History API; they do not start another Server Component render.
 
 ### 7.4 Data-fetching policy
 
@@ -291,7 +291,7 @@ Server Components call server-only data-access functions directly. They do not m
 | --- | --- |
 | Visitor-specific estimate history | `no-store`; private data must not be shared across visitors |
 | First market request without a dataset version | `no-store`; the active version may change |
-| Dataset-pinned market reads | Request-scoped memoisation; persistent portal caching only if its key space and invalidation policy are measured and bounded |
+| Dataset-pinned market reads | Initial RSC read or subsequent same-origin client read; request-scoped memoisation only, with persistent portal caching allowed only if its key space and invalidation policy are measured and bounded |
 | Statistics | Batch metrics where possible; parallelise independent grouped requests after dataset pinning |
 | What-if and estimate creation | Explicit user mutation; no cache |
 | Export job status | Poll according to `Retry-After`; no cache |
@@ -308,8 +308,8 @@ The design uses one smart container per interactive screen and small dummy compo
 A smart container may:
 
 - own client-side interaction state or a reducer;
-- call browser API clients for mutations;
-- commit filters and cursors to the router;
+- call browser API clients for post-hydration reads and mutations;
+- commit filters and cursors with the History API without starting an RSC navigation;
 - coordinate optimistic state, retries, and focus;
 - convert domain objects to view props; and
 - pass data and event callbacks to dummy components.
@@ -363,6 +363,7 @@ The portal does not need a global state library. URL state, Server Component dat
 | Committed market filters, sort, limit, cursor, dataset version | URL search parameters |
 | Draft form and filter values | Local controlled form state |
 | Initial history and market data | Server Component page model |
+| Post-hydration market records, aggregates, charts, and committed query | Market smart-container state, refreshed through the same-origin BFF |
 | Estimate comparison selection | Estimator smart-container reducer |
 | What-if result and export jobs | Market smart-container reducer |
 | Transient disclosure/dialog state | Local component state |
@@ -538,7 +539,7 @@ Dependency direction is one way:
 ```text
 route Server Component -> feature server data access -> backend
 route Server Component -> feature smart container -> dummy components
-smart container -> feature API client -> same-origin Route Handler -> backend
+smart container -> feature API client -> same-origin Route Handler -> server data access -> backend
 feature components -> shared UI, hooks, motion, validation, formatting
 ```
 

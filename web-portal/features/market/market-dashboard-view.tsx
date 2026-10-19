@@ -18,6 +18,7 @@ interface Props {
   whatIf: WhatIfResponse | null;
   exports: ExportJob[];
   creatingFormat: ExportFormat | null;
+  dashboardError: PortalApiError | null;
   exportError: PortalApiError | null;
   announcement: string;
   onApplyFilters: (values: MarketFilterValues) => void;
@@ -58,13 +59,14 @@ export function MarketDashboardView(props: Props): React.ReactElement {
         <div className="flex min-h-14 flex-col gap-3 sm:flex-row sm:items-center">
           <div className="inline-flex min-h-14 flex-1 items-center gap-3 rounded-xl border border-border-ui bg-white px-4 py-2 shadow-panel">
             <Database className="size-5 text-ink" aria-hidden="true" />
-            <div className="min-w-0"><p className="font-bold text-ink">Housing dataset · {formatNumber(props.model.overview.count)} matching</p><p className="truncate text-xs text-ink-muted">Version {props.model.datasetVersion.id.slice(0, 8)} · server-rendered and pinned · price σ {nullableMoney(props.model.overview.priceStandardDeviation)}</p></div>
+            <div className="min-w-0"><p className="font-bold text-ink">Housing dataset · {formatNumber(props.model.overview.count)} matching</p><p className="truncate text-xs text-ink-muted">Version {props.model.datasetVersion.id.slice(0, 8)} · version-pinned · initial load server-rendered · price σ {nullableMoney(props.model.overview.priceStandardDeviation)}</p></div>
           </div>
           <div className={`inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-bold transition-opacity ${props.navigating ? "bg-blue-soft text-blue opacity-100" : "pointer-events-none opacity-0"}`} role={props.navigating ? "status" : undefined} aria-live={props.navigating ? "polite" : undefined} aria-hidden={!props.navigating}><span className="size-2 animate-pulse rounded-full bg-blue" />Updating dashboard…</div>
         </div>
 
         <FilterForm values={props.values} disabled={false} pending={props.navigating} onApply={props.onApplyFilters} onReset={props.onResetFilters} />
         {activeFilters.length > 0 ? <div className="flex flex-wrap gap-2" aria-label="Active market filters">{activeFilters.map(({ key, value }) => <span key={key} className="rounded-full border border-border-ui bg-white px-3 py-1.5 text-xs font-bold text-ink">{filterLabels[key]} {value}</span>)}</div> : null}
+        {props.dashboardError ? <StatusMessage tone="error" title="Dashboard update failed" live>{props.dashboardError.message}{props.dashboardError.correlationId ? <> Reference: {props.dashboardError.correlationId}</> : null}</StatusMessage> : null}
         {props.exportError ? <StatusMessage tone="error" title="Export action failed" live>{props.exportError.message}</StatusMessage> : null}
 
         <section aria-labelledby="summary-heading">

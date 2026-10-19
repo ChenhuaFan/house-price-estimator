@@ -16,7 +16,7 @@ test.describe("Task 2 portal with contract-faithful mock backends", () => {
     await page.getByRole("link", { name: "Market analysis" }).first().click();
     await expect(page.getByRole("heading", { level: 1, name: "Market analysis" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("50 matching")).toBeVisible();
-    await expect(page.getByText(/server-rendered and pinned/)).toBeVisible();
+    await expect(page.getByText(/version-pinned · initial load server-rendered/)).toBeVisible();
   });
 
   test("validates, estimates, reuses and compares without a page reload", async ({ page }) => {
@@ -37,6 +37,13 @@ test.describe("Task 2 portal with contract-faithful mock backends", () => {
   });
 
   test("keeps the dashboard visible and scroll position stable during URL transitions", async ({ page }) => {
+    const marketRouteReads: string[] = [];
+    const dashboardReads: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (request.method() === "GET" && url.pathname === "/market") marketRouteReads.push(request.url());
+      if (request.method() === "GET" && url.pathname === "/api/market/dashboard") dashboardReads.push(request.url());
+    });
     await page.goto("/market");
     await page.getByText(/Market filters/).click();
     await page.locator("#filter-price_gte").fill("250000");
@@ -45,6 +52,8 @@ test.describe("Task 2 portal with contract-faithful mock backends", () => {
     await expect(page.getByText("Updating dashboard…")).toBeVisible();
     await expect(page.getByRole("heading", { name: /Matching properties/ })).toBeVisible();
     await expect(page).toHaveURL(/price_gte=250000/);
+    expect(marketRouteReads).toHaveLength(1);
+    expect(dashboardReads).toHaveLength(1);
     expect(Math.abs((await page.evaluate(() => window.scrollY)) - before)).toBeLessThan(4);
     await expect(page.getByText(/Price ≥ 250000/)).toBeVisible();
     await page.getByRole("button", { name: /Actual price/ }).click();

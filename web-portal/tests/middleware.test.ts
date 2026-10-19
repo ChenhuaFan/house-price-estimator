@@ -21,6 +21,7 @@ describe("anonymous estimator identity middleware", () => {
     const response = middleware(request);
 
     expect(response.headers.get("set-cookie")).toBeNull();
+    expect(response.headers.get("x-middleware-request-x-estimator-client-id")).toBe(clientId);
   });
 
   it("creates an HTTP-only one-year identity and forwards it to the first server render", () => {

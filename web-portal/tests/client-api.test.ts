@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearEstimateHistory, createEstimate, deleteEstimate, loadHistory, PortalApiError } from "@/features/estimator/api";
-import { cancelExport, createExport, getExport, runWhatIf } from "@/features/market/api";
-import { estimate, propertyInput, whatIfResponse } from "@/tests/fixtures";
+import { cancelExport, createExport, getExport, loadMarketDashboard, runWhatIf } from "@/features/market/api";
+import { estimate, marketPageModel, propertyInput, whatIfResponse } from "@/tests/fixtures";
 
 const correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const exportId = "11111111-1111-4111-8111-111111111111";
@@ -54,6 +54,18 @@ describe("browser API adapters", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(runWhatIf(propertyInput)).resolves.toEqual(whatIfResponse);
     expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string)).toMatchObject({ bathrooms: "2.5", distance_to_city_center: "4.125", school_rating: "8.500" });
+  });
+
+  it("loads a complete market dashboard through the client read endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(marketPageModel), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const query = new URLSearchParams({ price_gte: "250000.00" });
+
+    await expect(loadMarketDashboard(query)).resolves.toEqual(marketPageModel);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/market/dashboard?price_gte=250000.00",
+      expect.objectContaining({ cache: "no-store", headers: expect.any(Headers) }),
+    );
   });
 
   it("creates, polls and cancels asynchronous exports", async () => {

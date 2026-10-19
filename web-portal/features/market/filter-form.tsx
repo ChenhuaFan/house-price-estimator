@@ -11,17 +11,19 @@ interface RangeDefinition {
   label: string;
   unit: string;
   step: string;
+  minimum: string;
+  maximum?: string;
 }
 
 const ranges: RangeDefinition[] = [
-  { min: "price_gte", max: "price_lte", label: "Actual price", unit: "USD", step: "0.01" },
-  { min: "square_footage_gte", max: "square_footage_lte", label: "Floor area", unit: "sq. ft.", step: "1" },
-  { min: "bedrooms_gte", max: "bedrooms_lte", label: "Bedrooms", unit: "whole number", step: "1" },
-  { min: "bathrooms_gte", max: "bathrooms_lte", label: "Bathrooms", unit: "0.5 increments", step: "0.5" },
-  { min: "year_built_gte", max: "year_built_lte", label: "Year built", unit: "calendar year", step: "1" },
-  { min: "lot_size_gte", max: "lot_size_lte", label: "Lot size", unit: "sq. ft.", step: "1" },
-  { min: "distance_to_city_center_gte", max: "distance_to_city_center_lte", label: "Distance", unit: "miles", step: "0.001" },
-  { min: "school_rating_gte", max: "school_rating_lte", label: "School rating", unit: "rating", step: "0.001" },
+  { min: "price_gte", max: "price_lte", label: "Actual price", unit: "USD", step: "0.01", minimum: "0", maximum: "9999999999999999.99" },
+  { min: "square_footage_gte", max: "square_footage_lte", label: "Floor area", unit: "sq. ft.", step: "1", minimum: "1" },
+  { min: "bedrooms_gte", max: "bedrooms_lte", label: "Bedrooms", unit: "whole number", step: "1", minimum: "0", maximum: "2147483647" },
+  { min: "bathrooms_gte", max: "bathrooms_lte", label: "Bathrooms", unit: "0.5 increments", step: "0.5", minimum: "0", maximum: "99999999999.9" },
+  { min: "year_built_gte", max: "year_built_lte", label: "Year built", unit: "calendar year", step: "1", minimum: "1", maximum: "9999" },
+  { min: "lot_size_gte", max: "lot_size_lte", label: "Lot size", unit: "sq. ft.", step: "1", minimum: "0" },
+  { min: "distance_to_city_center_gte", max: "distance_to_city_center_lte", label: "Distance", unit: "miles", step: "0.001", minimum: "0", maximum: "999999999.999" },
+  { min: "school_rating_gte", max: "school_rating_lte", label: "School rating", unit: "rating", step: "0.001", minimum: "0", maximum: "999999999.999" },
 ];
 
 export type MarketFilterValues = Partial<Record<(typeof marketFilterKeys)[number], string>>;
@@ -86,8 +88,8 @@ export function FilterForm({
               <legend className="text-sm font-bold text-ink">{range.label}</legend>
               <p className="mt-0.5 text-xs text-ink-muted">{range.unit}</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <label className="text-xs font-semibold text-ink-muted">Minimum<input id={`filter-${range.min}`} aria-label={`${range.label} minimum`} className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 px-3 text-ink focus:border-primary focus:ring-2 focus:ring-primary/20" type="number" step={range.step} value={draft[range.min] ?? ""} disabled={disabled || pending} onChange={(event) => setDraft((current) => ({ ...current, [range.min]: event.target.value }))} /></label>
-                <label className="text-xs font-semibold text-ink-muted">Maximum<input aria-label={`${range.label} maximum`} className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 px-3 text-ink focus:border-primary focus:ring-2 focus:ring-primary/20" type="number" step={range.step} value={draft[range.max] ?? ""} disabled={disabled || pending} onChange={(event) => setDraft((current) => ({ ...current, [range.max]: event.target.value }))} /></label>
+                <label className="text-xs font-semibold text-ink-muted">Minimum<input id={`filter-${range.min}`} aria-label={`${range.label} minimum`} className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 px-3 text-ink focus:border-primary focus:ring-2 focus:ring-primary/20" type="number" step={range.step} min={range.minimum} max={range.maximum} value={draft[range.min] ?? ""} disabled={disabled || pending} onChange={(event) => setDraft((current) => ({ ...current, [range.min]: event.target.value }))} /></label>
+                <label className="text-xs font-semibold text-ink-muted">Maximum<input aria-label={`${range.label} maximum`} className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 px-3 text-ink focus:border-primary focus:ring-2 focus:ring-primary/20" type="number" step={range.step} min={range.minimum} max={range.maximum} value={draft[range.max] ?? ""} disabled={disabled || pending} onChange={(event) => setDraft((current) => ({ ...current, [range.max]: event.target.value }))} /></label>
               </div>
             </fieldset>)}
           </div>
