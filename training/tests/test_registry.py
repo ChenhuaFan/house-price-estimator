@@ -92,6 +92,7 @@ def test_registry_executes_every_command_and_read_adapter(
         Connection(Result()),
         Connection(Result(one=model)),
         Connection(Result(one=run)),
+        Connection(Result(one=(DATASET_ID,))),
         Connection(Result(), Result(one=metadata), Result(all_rows=[row])),
     )
     monkeypatch.setattr(registry_module.psycopg, "connect", connections)
@@ -121,6 +122,7 @@ def test_registry_executes_every_command_and_read_adapter(
     registry.promote_model("v1")
     assert registry.model_version("v1") == model
     assert registry.run(RUN_ID) == run
+    assert registry.snapshot_business_dataset("snapshot-v1") == DATASET_ID
     assert registry.dataset(DATASET_ID) == (metadata, [row])
     assert connections.values == []
 

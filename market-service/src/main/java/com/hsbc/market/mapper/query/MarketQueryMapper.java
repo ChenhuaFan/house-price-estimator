@@ -1,13 +1,11 @@
 package com.hsbc.market.mapper.query;
 
-import com.hsbc.market.model.persistence.DatasetVersionRecord;
 import com.hsbc.market.model.persistence.PropertyRecordRow;
 import com.hsbc.market.model.persistence.StatisticsRowRecord;
 import com.hsbc.market.model.query.MarketSqlParameters;
 import com.hsbc.market.model.query.PageSqlParameters;
 import com.hsbc.market.model.query.StatisticsSqlParameters;
 import java.util.List;
-import java.util.UUID;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.session.ResultHandler;
@@ -15,11 +13,9 @@ import org.apache.ibatis.session.ResultHandler;
 /** MyBatis queries used by interactive market reads. */
 @Mapper
 public interface MarketQueryMapper {
-  boolean catalogReadable();
+  boolean businessDataReadable();
 
-  DatasetVersionRecord findActiveVersion();
-
-  DatasetVersionRecord findVersion(@Param("id") UUID id);
+  long currentDataRevision();
 
   List<PropertyRecordRow> selectPage(@Param("parameters") PageSqlParameters parameters);
 

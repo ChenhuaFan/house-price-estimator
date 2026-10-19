@@ -21,8 +21,7 @@ public class CacheConfiguration {
     manager.setCaches(
         List.of(
             cache("statistics", 500, Duration.ofMinutes(5)),
-            cache("firstPage", 200, Duration.ofMinutes(1)),
-            cache("datasetVersion", 8, Duration.ofSeconds(30))));
+            cache("firstPage", 200, Duration.ofMinutes(1))));
     return manager;
   }
 

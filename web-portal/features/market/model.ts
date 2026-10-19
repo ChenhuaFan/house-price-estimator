@@ -107,10 +107,6 @@ export function parseMarketQuery(
   const cursor = first(input.cursor);
   if (cursor && cursor.length <= 2048) query.cursor = cursor;
 
-  const dataset = first(input.dataset_version_id);
-  if (dataset && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(dataset)) {
-    query.dataset_version_id = dataset;
-  }
   return query;
 }
 
@@ -124,7 +120,6 @@ export function queryToSearchParams(query: MarketQueryState): URLSearchParams {
   params.set("sort", query.sort);
   params.set("limit", String(query.limit));
   if (query.cursor) params.set("cursor", query.cursor);
-  if (query.dataset_version_id) params.set("dataset_version_id", query.dataset_version_id);
   return params;
 }
 
@@ -160,7 +155,7 @@ export function queryToFilters(query: MarketQueryState): MarketFilters {
   return filters;
 }
 
-/** Builds the immutable dataset/filter/sort selection reused by export requests. */
+/** Builds the live business-data filter/sort selection reused by export requests. */
 export function marketSelection(model: MarketPageModel): components["schemas"]["MarketSelection"] {
   const [field, direction] = model.query.sort.split(":") as [
     components["schemas"]["SortField"],
@@ -168,7 +163,6 @@ export function marketSelection(model: MarketPageModel): components["schemas"]["
   ];
   return {
     scope: {
-      dataset_version_id: model.datasetVersion.id,
       filters: queryToFilters(model.query),
     },
     sort: [{ field, direction }],

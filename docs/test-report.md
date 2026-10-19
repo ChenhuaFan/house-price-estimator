@@ -46,7 +46,7 @@ All application images used the Git-derived tag `f3ea323863c2`:
 
 Only the portal and model API were published to loopback. The estimator service, market service, and PostgreSQL were reachable only on the private Compose network.
 
-After a persisted estimate (`b7043557-53f2-4c47-bc1d-3832d0c41946`) was created, all four application services were restarted without removing volumes. The estimate, active dataset, model, and artifact remained available. The training-run count stayed at one, proving that ordinary startup and restart did not retrain the model.
+After a persisted estimate (`b7043557-53f2-4c47-bc1d-3832d0c41946`) was created, all four application services were restarted without removing volumes. The estimate, live business data, active model with its frozen dataset lineage, and artifact remained available. The training-run count stayed at one, proving that ordinary startup and restart did not retrain the model.
 
 ## 4. Automated verification
 

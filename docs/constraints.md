@@ -45,7 +45,7 @@ The baseline uses the lowest version line explicitly permitted by the source doc
 - Dataset content and snapshot fingerprints must use the canonical serialization defined in [`data-schema.md`](data-schema.md); platform-default CSV formatting is not permitted.
 - The top-level `training/` workspace must use the script, snapshot, artifact, and registry paths specified by `REQ-TRAIN-002`, `REQ-TRAIN-008`, `REQ-TRAIN-010`, and `REQ-TRAIN-011`.
 - Training and evaluation must be reproducible from an immutable central dataset version, a deterministic exported snapshot, pinned dependencies, the saved local split membership, and the documented random seed.
-- Model metadata must identify the central dataset version, source-file fingerprint, normalized dataset fingerprint, exported snapshot fingerprint, Git commit, and training-run identifier.
+- Model metadata must identify the frozen dataset version, its business-source/content fingerprint, exported CSV snapshot fingerprint, Git commit, and training-run identifier.
 - `Test Data For Prediction.csv` must not be loaded by database initialization or used to calculate model accuracy metrics. It is exercised through the Web/API path, where successful predictions may become ordinary estimate-history records.
 - Both Task 2 applications must integrate with the same machine learning model service produced in Task 1.
 
@@ -141,8 +141,8 @@ Hard validation is limited to presence, type, finiteness, discrete-value rules, 
 - Loading and error states must be handled at the shared layout level.
 - The UI must use appropriate loading states and error boundaries.
 - The Python backend must implement data validation and error handling.
-- The market service must use Spring Cache backed by a bounded Caffeine in-process cache for repeated market queries and aggregate results. Cache keys must include the dataset fingerprint, normalized filters, sort specification, and relevant model version. Dataset or model activation must logically invalidate prior entries because the new version produces a different key; old entries must never be returned for the new version and may remain only until the five-minute TTL or bounded-size eviction removes them. Explicit whole-cache mutation is not required.
-- Business-data flow into training is one-way: the training role may select the chosen `catalog` dataset version but must never insert, update, or delete central housing records. Its only database writes are run, evaluation, and model-registry records in `ml_registry`.
+- The market service must use Spring Cache backed by a bounded Caffeine in-process cache for repeated market queries and aggregate results. Cache keys must include the live business `data_revision`, normalized filters, sort specification, and relevant model version. A business write changes the revision, so old entries can never be returned under the new revision and may remain only until the five-minute TTL or bounded-size eviction removes them. Explicit whole-cache mutation is not required.
+- Business-data flow into training is one-way: `business.housing_records` → immutable `catalog` dataset → CSV snapshot → training run → model. The training role cannot read or mutate live business rows directly; it may invoke the controlled freeze function and select frozen catalog rows. Its other database writes are restricted to controlled run, evaluation, and model-registry functions in `ml_registry`.
 - Cached data is disposable and must be reconstructed after a market-service restart. Authoritative history and monetary values must never depend on cache persistence.
 - All services must emit structured logs and include the correlation ID in request, downstream-call, and error logs. The local demonstration must expose request count, latency, error rate, model-call latency, cache hit ratio, and prediction/export failures through application metrics endpoints or logs; no external observability platform is required.
 - Each application service must expose separate liveness and readiness signals. Readiness must fail when a required startup dependency is unavailable, without treating a transient downstream failure as process death.
@@ -151,7 +151,12 @@ Hard validation is limited to presence, type, finiteness, discrete-value rules, 
 
 - The source PDF does not require user accounts, authentication, or role-based authorization. The local interview build must not introduce an identity provider or account-management flow.
 - History isolation must use the opaque client identifier defined in Section 5. The server must apply that identifier to every history read and delete operation; a client-supplied history owner in a URL or JSON body must not override it. Estimate-history export is not part of the current requirements or API.
-- Published container ports must bind to the loopback interface by default. A documented LAN override may bind the portal and model service to a specific LAN interface or `0.0.0.0`; an independent debug override may do the same for estimator Swagger. LAN use must be explicit, configure the matching portal origin and CORS/CSRF trusted origins, remain behind the host firewall, and never change service-to-service traffic away from the private Docker Compose network.
+- Published container ports must bind to the loopback interface by default. This includes the portal,
+  model API, and Java market Swagger UI. A documented LAN override may bind them to a specific LAN
+  interface or `0.0.0.0`; an independent debug override may do the same for estimator Swagger. LAN
+  use must be explicit, configure the matching portal origin and CORS/CSRF trusted origins, remain
+  behind the host firewall, and never change service-to-service traffic away from the private
+  Docker Compose network.
 - CORS must allow only the configured local portal origin. Cookie-based state-changing requests must use `SameSite` protection and an explicit CSRF defence where the framework does not provide equivalent same-origin enforcement.
 - Request bodies, uploaded batch files, and export sizes must have explicit limits. All inputs must pass the canonical validation rules before business processing.
 - Local secrets and the separate migration, training, market, model, and estimator database credentials must be supplied through ignored environment files or Docker Compose secrets. They must never be committed, copied into images, or printed in logs.

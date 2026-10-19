@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM maven:3.9.9-eclipse-temurin-21 AS builder
 
 WORKDIR /build/market-service
@@ -5,10 +6,9 @@ COPY market-service/.mvn ./.mvn
 COPY market-service/mvnw ./mvnw
 COPY market-service/pom.xml ./pom.xml
 COPY docs/openapi/market-service-v2.yaml /build/docs/openapi/market-service-v2.yaml
-RUN ./mvnw -B -q -DskipTests dependency:go-offline
-
 COPY market-service/src ./src
-RUN ./mvnw -B -q -DskipTests package
+RUN --mount=type=cache,id=hsbc-market-maven,target=/root/.m2 \
+    ./mvnw -B -ntp -DskipTests package
 RUN java -Djarmode=tools -jar target/market-service.jar \
     extract --layers --destination /layers
 

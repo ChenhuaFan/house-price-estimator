@@ -143,6 +143,8 @@ services:
     volumes:
       - market_exports:/var/lib/market-service/exports
     expose: ["8080"]
+    ports:
+      - "${PUBLISH_HOST:-127.0.0.1}:${MARKET_PORT:-8080}:8080"
     networks: [housing-private]
 
   web-portal:

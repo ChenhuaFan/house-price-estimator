@@ -3,6 +3,7 @@ package com.hsbc.market.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsbc.market.config.MarketProperties;
 import com.hsbc.market.dao.ExportJobDao;
+import com.hsbc.market.dao.MarketReadDao;
 import com.hsbc.market.export.CsvExportGenerator;
 import com.hsbc.market.export.ExportCancelledException;
 import com.hsbc.market.export.PdfExportGenerator;
@@ -22,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -32,6 +34,7 @@ public class ExportWorkerService {
   private final String workerId = UUID.randomUUID().toString();
   private final ExportJobDao jobs;
   private final LocalExportStorage storage;
+  private final MarketReadDao marketReadDao;
   private final CsvExportGenerator csv;
   private final PdfExportGenerator pdf;
   private final ObjectMapper objectMapper;
@@ -43,6 +46,7 @@ public class ExportWorkerService {
 
   public ExportWorkerService(
       ExportJobDao jobs,
+      MarketReadDao marketReadDao,
       LocalExportStorage storage,
       CsvExportGenerator csv,
       PdfExportGenerator pdf,
@@ -53,6 +57,7 @@ public class ExportWorkerService {
       @Qualifier("exportTransactionManager") PlatformTransactionManager exportTransactionManager,
       MarketProperties properties) {
     this.jobs = jobs;
+    this.marketReadDao = marketReadDao;
     this.storage = storage;
     this.csv = csv;
     this.pdf = pdf;
@@ -65,6 +70,7 @@ public class ExportWorkerService {
     this.stateTransaction = state;
     TransactionTemplate generation = new TransactionTemplate(exportTransactionManager);
     generation.setReadOnly(true);
+    generation.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     generation.setTimeout(Math.toIntExact(properties.database().exportTimeout().toSeconds()));
     this.generationTransaction = generation;
   }
@@ -170,6 +176,12 @@ public class ExportWorkerService {
 
   private Artifact generate(Job job, RequestSnapshot snapshot) {
     try {
+      long currentRevision = marketReadDao.currentExportDataRevision();
+      if (currentRevision != job.sourceRevision()
+          || currentRevision != snapshot.selection().dataRevision()) {
+        throw new IllegalStateException(
+            "business data changed after this export was queued; recreate the export");
+      }
       return job.format() == Format.CSV ? csv.generate(job, snapshot) : pdf.generate(job, snapshot);
     } catch (Exception error) {
       throw new ExportGenerationFailure(error);

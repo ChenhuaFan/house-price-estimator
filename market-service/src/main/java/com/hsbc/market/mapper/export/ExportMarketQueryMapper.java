@@ -13,6 +13,8 @@ import org.apache.ibatis.session.ResultHandler;
 /** MyBatis queries used by long-running export generation. */
 @Mapper
 public interface ExportMarketQueryMapper {
+  long currentDataRevision();
+
   List<StatisticsRowRecord> selectStatistics(
       @Param("parameters") StatisticsSqlParameters parameters);
 

@@ -1,12 +1,11 @@
 SHELL := /bin/sh
 
 COMPOSE := docker compose
-DATASET_VERSION_ID ?= 00000000-0000-4000-8000-000000000001
 GIT_COMMIT_SHA ?= $(shell git rev-parse HEAD)
 IMAGE_TAG ?= $(shell git rev-parse --short=12 HEAD)
 export GIT_COMMIT_SHA IMAGE_TAG
 
-.PHONY: build db-migrate train publish bootstrap up up-lan up-debug down smoke python-test test e2e contracts-update contracts-validate verify
+.PHONY: build db-migrate snapshot-dataset train publish bootstrap up up-lan up-debug down smoke python-test test e2e contracts-update contracts-validate verify
 
 build:
 	$(COMPOSE) build
@@ -15,10 +14,17 @@ db-migrate:
 	$(COMPOSE) up -d postgres
 	$(COMPOSE) run --rm db-migrate
 
+snapshot-dataset: db-migrate
+	$(COMPOSE) --profile training build training
+	$(COMPOSE) --profile training run --rm training scripts/snapshot_dataset.py \
+		$(if $(DATASET_VERSION_NAME),--dataset-version-name "$(DATASET_VERSION_NAME)",)
+
 train: db-migrate
 	$(COMPOSE) --profile training build training
 	$(COMPOSE) --profile training run --rm training scripts/bootstrap.py \
-		--dataset-version-id $(DATASET_VERSION_ID) $(if $(MODEL_VERSION),--model-version $(MODEL_VERSION),)
+		$(if $(DATASET_VERSION_ID),--dataset-version-id $(DATASET_VERSION_ID),) \
+		$(if $(DATASET_VERSION_NAME),--dataset-version-name "$(DATASET_VERSION_NAME)",) \
+		$(if $(MODEL_VERSION),--model-version $(MODEL_VERSION),)
 
 publish:
 	@test -n "$(MODEL_VERSION)" || (echo "MODEL_VERSION is required" >&2; exit 2)
@@ -41,7 +47,9 @@ bootstrap: db-migrate
 	if [ "$$active" = "0" ]; then \
 		$(COMPOSE) --profile training build training; \
 		$(COMPOSE) --profile training run --rm training scripts/bootstrap.py \
-			--dataset-version-id $(DATASET_VERSION_ID) $(if $(MODEL_VERSION),--model-version $(MODEL_VERSION),); \
+			$(if $(DATASET_VERSION_ID),--dataset-version-id $(DATASET_VERSION_ID),) \
+			$(if $(DATASET_VERSION_NAME),--dataset-version-name "$(DATASET_VERSION_NAME)",) \
+			$(if $(MODEL_VERSION),--model-version $(MODEL_VERSION),); \
 	else \
 		echo "An active model already exists; bootstrap is reusing it."; \
 	fi

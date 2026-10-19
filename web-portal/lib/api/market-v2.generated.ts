@@ -123,11 +123,6 @@ export interface components {
         ThreeDecimal: string;
         /** @example 482731.38 */
         DecimalValue: string;
-        DatasetVersion: {
-            /** Format: uuid */
-            id: string;
-            content_sha256: string;
-        };
         IntegerRange: {
             /** Format: int64 */
             gte?: number;
@@ -149,8 +144,6 @@ export interface components {
             school_rating?: components["schemas"]["DecimalRange"];
         };
         MarketScope: {
-            /** Format: uuid */
-            dataset_version_id?: string;
             filters?: components["schemas"]["MarketFilters"];
         };
         /** @enum {string} */
@@ -190,7 +183,11 @@ export interface components {
             next_cursor?: string;
         };
         PropertyPage: {
-            dataset_version: components["schemas"]["DatasetVersion"];
+            /**
+             * Format: int64
+             * @description Server-owned revision of the mutable business store used by this response.
+             */
+            data_revision: number;
             query_fingerprint: string;
             items: components["schemas"]["PropertyRecord"][];
             page: components["schemas"]["PageMetadata"];
@@ -246,7 +243,11 @@ export interface components {
             value?: components["schemas"]["DecimalValue"];
         };
         StatisticsResponse: {
-            dataset_version: components["schemas"]["DatasetVersion"];
+            /**
+             * Format: int64
+             * @description Server-owned revision of the mutable business store used by this response.
+             */
+            data_revision: number;
             query_fingerprint: string;
             groups: components["schemas"]["StatisticsGroup"][];
         };
@@ -280,6 +281,8 @@ export interface components {
             export_id: string;
             status: components["schemas"]["ExportStatus"];
             format: components["schemas"]["ExportFormat"];
+            /** Format: int64 */
+            data_revision: number;
             query_fingerprint: string;
             /** Format: date-time */
             created_at: string;
@@ -422,7 +425,6 @@ export interface components {
     parameters: {
         CorrelationId: string;
         ExportId: string;
-        DatasetVersionId: string;
         PriceGte: components["schemas"]["Money"];
         PriceLte: components["schemas"]["Money"];
         SquareFootageGte: number;
@@ -452,7 +454,6 @@ export interface operations {
     listProperties: {
         parameters: {
             query?: {
-                dataset_version_id?: components["parameters"]["DatasetVersionId"];
                 price_gte?: components["parameters"]["PriceGte"];
                 price_lte?: components["parameters"]["PriceLte"];
                 square_footage_gte?: components["parameters"]["SquareFootageGte"];

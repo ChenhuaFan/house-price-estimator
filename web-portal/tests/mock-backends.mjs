@@ -1,8 +1,7 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 
-const datasetId = "00000000-0000-4000-8000-000000000001";
-const datasetHash = "a".repeat(64);
+const dataRevision = 1;
 const queryHash = `sha256:${"b".repeat(64)}`;
 const correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -104,7 +103,7 @@ createServer(async (request, response) => {
     const limit = Number(url.searchParams.get("limit") ?? 20);
     await new Promise((resolve) => setTimeout(resolve, url.searchParams.has("price_gte") ? 350 : 30));
     return json(response, 200, {
-      dataset_version: { id: datasetId, content_sha256: datasetHash }, query_fingerprint: queryHash,
+      data_revision: dataRevision, query_fingerprint: queryHash,
       items: rows.slice(start, start + limit), page: { limit, has_more: start + limit < rows.length, ...(start + limit < rows.length ? { next_cursor: `cursor-${start + limit}` } : {}) },
     });
   }
@@ -123,7 +122,7 @@ createServer(async (request, response) => {
       }
       groups = [...grouped.entries()].sort(([a], [b]) => a - b).map(([key, values]) => ({ key: widthKey(query.group_by.field, key, Number(query.group_by.bucket?.width ?? 0)), rows: values }));
     }
-    return json(response, 200, { dataset_version: { id: datasetId, content_sha256: datasetHash }, query_fingerprint: queryHash, groups: groups.map((group) => ({ key: group.key, values: query.metrics.map((metric) => ({ metric_id: metric.id, ...(statistic(metric.method, metric.field, group.rows) !== undefined ? { value: statistic(metric.method, metric.field, group.rows) } : {}) })) })) });
+    return json(response, 200, { data_revision: dataRevision, query_fingerprint: queryHash, groups: groups.map((group) => ({ key: group.key, values: query.metrics.map((metric) => ({ metric_id: metric.id, ...(statistic(metric.method, metric.field, group.rows) !== undefined ? { value: statistic(metric.method, metric.field, group.rows) } : {}) })) })) });
   }
   if (url.pathname === "/api/v2/market/what-if" && request.method === "POST") {
     const input = await body(request);
@@ -132,7 +131,7 @@ createServer(async (request, response) => {
   if (url.pathname === "/api/v2/market/exports" && request.method === "POST") {
     const input = await body(request);
     const id = randomUUID();
-    const job = { export_id: id, status: "QUEUED", format: input.format, query_fingerprint: queryHash, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86400000).toISOString() };
+    const job = { export_id: id, status: "QUEUED", format: input.format, data_revision: dataRevision, query_fingerprint: queryHash, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86400000).toISOString() };
     exportJobs.set(id, job);
     return json(response, 202, job, { location: `/api/v2/market/exports/${id}`, "retry-after": "1" });
   }

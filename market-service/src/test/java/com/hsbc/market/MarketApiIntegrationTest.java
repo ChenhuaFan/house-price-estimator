@@ -26,6 +26,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -64,7 +68,6 @@ import org.springframework.test.web.servlet.MvcResult;
     })
 @AutoConfigureMockMvc
 class MarketApiIntegrationTest {
-  private static final UUID DATASET_ID = UUID.fromString("00000000-0000-4000-8000-000000000001");
   private static final String[] SORT_FIELDS = {
     "source_id",
     "price",
@@ -118,7 +121,7 @@ class MarketApiIntegrationTest {
     assertThat(
             querySqlSessionTemplate
                 .getConfiguration()
-                .hasStatement("com.hsbc.market.mapper.query.MarketQueryMapper.findActiveVersion"))
+                .hasStatement("com.hsbc.market.mapper.query.MarketQueryMapper.currentDataRevision"))
         .isTrue();
     assertThat(
             querySqlSessionTemplate
@@ -138,8 +141,8 @@ class MarketApiIntegrationTest {
   }
 
   @Test
-  void generatedOpenApiDocumentIsDisabled() throws Exception {
-    mvc.perform(get("/v3/api-docs")).andExpect(status().isNotFound());
+  void generatedOpenApiDocumentIsAvailable() throws Exception {
+    mvc.perform(get("/v3/api-docs")).andExpect(status().isOk());
   }
 
   @Test
@@ -187,7 +190,7 @@ class MarketApiIntegrationTest {
     String request =
         """
                 {
-                  "scope":{"dataset_version_id":"00000000-0000-4000-8000-000000000001"},
+                  "scope":{},
                   "metrics":[
                     {"id":"property_count","method":"COUNT","field":"*"},
                     {"id":"average_price","method":"AVG","field":"price"},
@@ -252,19 +255,17 @@ class MarketApiIntegrationTest {
         String operator = bound.equals("gte") ? ">=" : "<=";
         long expected =
             jdbc.queryForObject(
-                "SELECT count(*) FROM catalog.housing_records WHERE dataset_version_id = ? AND "
+                "SELECT count(*) FROM business.housing_records WHERE "
                     + filter[1]
                     + " "
                     + operator
                     + " CAST(? AS numeric)",
                 Long.class,
-                DATASET_ID,
                 filter[2]);
         JsonNode response =
             json(
                 mvc.perform(
                         get("/api/v2/market/properties")
-                            .param("dataset_version_id", DATASET_ID.toString())
                             .param(filter[0] + '_' + bound, filter[2])
                             .param("limit", "200"))
                     .andExpect(status().isOk())
@@ -288,12 +289,11 @@ class MarketApiIntegrationTest {
     long combinedExpected =
         jdbc.queryForObject(
             """
-            SELECT count(*) FROM catalog.housing_records
-            WHERE dataset_version_id = ? AND price >= 200000.00
+            SELECT count(*) FROM business.housing_records
+            WHERE price >= 200000.00
               AND bedrooms >= 3 AND school_rating >= 7.000
             """,
-            Long.class,
-            DATASET_ID);
+            Long.class);
     assertThat(combined.path("items").size()).isEqualTo(Math.toIntExact(combinedExpected));
 
     mvc.perform(
@@ -326,22 +326,20 @@ class MarketApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
                             """
-                            {"scope":{"dataset_version_id":"%s"},
+                            {"scope":{},
                              "metrics":[{"id":"property_count","method":"COUNT","field":"*"}],
                              "group_by":{"field":"bedrooms"},
                              "order":{"by":"group_key","direction":"asc"},"limit":100}
-                            """
-                                .formatted(DATASET_ID)))
+                            """))
                 .andExpect(status().isOk())
                 .andReturn());
     var expectedGroups =
         jdbc.query(
             """
-            SELECT bedrooms, count(*) FROM catalog.housing_records
-            WHERE dataset_version_id = ? GROUP BY bedrooms ORDER BY bedrooms
+            SELECT bedrooms, count(*) FROM business.housing_records
+            GROUP BY bedrooms ORDER BY bedrooms
             """,
-            (row, index) -> Map.entry(row.getInt(1), row.getLong(2)),
-            DATASET_ID);
+            (row, index) -> Map.entry(row.getInt(1), row.getLong(2)));
     assertThat(grouped.path("groups")).hasSize(expectedGroups.size());
     for (int index = 0; index < expectedGroups.size(); index++) {
       JsonNode group = grouped.path("groups").get(index);
@@ -358,23 +356,21 @@ class MarketApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
                             """
-                            {"scope":{"dataset_version_id":"%s"},
+                            {"scope":{},
                              "metrics":[{"id":"property_count","method":"COUNT","field":"*"}],
                              "group_by":{"field":"school_rating","bucket":{"method":"FIXED_WIDTH","width":"2.000"}},
                              "order":{"by":"group_key","direction":"asc"},"limit":100}
-                            """
-                                .formatted(DATASET_ID)))
+                            """))
                 .andExpect(status().isOk())
                 .andReturn());
     var expectedFixedWidthGroups =
         jdbc.query(
             """
             SELECT floor(school_rating / 2.000) * 2.000 AS lower_bound, count(*)
-            FROM catalog.housing_records
-            WHERE dataset_version_id = ? GROUP BY 1 ORDER BY 1
+            FROM business.housing_records
+            GROUP BY 1 ORDER BY 1
             """,
-            (row, index) -> Map.entry(row.getBigDecimal(1), row.getLong(2)),
-            DATASET_ID);
+            (row, index) -> Map.entry(row.getBigDecimal(1), row.getLong(2)));
     assertThat(fixedWidthGroups.path("groups")).hasSize(expectedFixedWidthGroups.size());
     for (int index = 0; index < expectedFixedWidthGroups.size(); index++) {
       JsonNode group = fixedWidthGroups.path("groups").get(index);
@@ -395,7 +391,6 @@ class MarketApiIntegrationTest {
 
     mvc.perform(
             get("/api/v1/market/analysis")
-                .param("datasetVersionId", DATASET_ID.toString())
                 .param("priceMin", "150000.00")
                 .param("priceMax", "400000.00")
                 .param("squareFootageMin", "1000")
@@ -417,7 +412,7 @@ class MarketApiIntegrationTest {
                 .param("page", "1")
                 .param("size", "7"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.datasetVersionId").value(DATASET_ID.toString()))
+        .andExpect(jsonPath("$.dataRevision").isNumber())
         .andExpect(jsonPath("$.records.length()").value(7))
         .andExpect(jsonPath("$.charts.average_price_by_bedrooms").isArray())
         .andExpect(jsonPath("$.charts.property_count_by_school_band.length()").value(3));
@@ -428,7 +423,6 @@ class MarketApiIntegrationTest {
     MvcResult csvPending =
         mvc.perform(
                 get("/api/v1/market/exports/data.csv")
-                    .param("datasetVersionId", DATASET_ID.toString())
                     .param("priceMin", "200000.00")
                     .param("sort", "price"))
             .andExpect(request().asyncStarted())
@@ -454,7 +448,6 @@ class MarketApiIntegrationTest {
     MvcResult pdfPending =
         mvc.perform(
                 post("/api/v1/market/exports/report.pdf")
-                    .param("datasetVersionId", DATASET_ID.toString())
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(prediction))
             .andExpect(request().asyncStarted())
@@ -569,7 +562,6 @@ class MarketApiIntegrationTest {
         json(
             mvc.perform(
                     get("/api/v2/market/properties")
-                        .param("dataset_version_id", DATASET_ID.toString())
                         .param("price_gte", "200000.00")
                         .param("bedrooms_gte", "3")
                         .param("sort", "price:asc")
@@ -583,10 +575,10 @@ class MarketApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
                             """
-                                {"scope":{"dataset_version_id":"%s","filters":%s},
+                                {"scope":{"filters":%s},
                                 "metrics":[{"id":"property_count","method":"COUNT","field":"*"}]}
                                 """
-                                .formatted(DATASET_ID, pdfFilters)))
+                                .formatted(pdfFilters)))
                 .andExpect(status().isOk())
                 .andReturn());
     long filteredCount = filteredPage.path("items").size();
@@ -788,9 +780,18 @@ class MarketApiIntegrationTest {
     JdbcTemplate jdbc = new JdbcTemplate(exportDataSource);
     assertThat(
             jdbc.queryForObject(
-                "SELECT has_table_privilege('market_runtime', 'catalog.housing_records', 'INSERT')",
-                Boolean.class))
+                "SELECT has_schema_privilege('market_runtime', 'catalog', 'USAGE')", Boolean.class))
         .isFalse();
+    assertThat(
+            jdbc.queryForObject(
+                """
+                SELECT has_table_privilege('market_runtime', 'business.housing_records', 'SELECT')
+                   AND has_table_privilege('market_runtime', 'business.housing_records', 'INSERT')
+                   AND has_table_privilege('market_runtime', 'business.housing_records', 'UPDATE')
+                   AND has_table_privilege('market_runtime', 'business.housing_records', 'DELETE')
+                """,
+                Boolean.class))
+        .isTrue();
     assertThat(
             jdbc.queryForObject(
                 """
@@ -805,6 +806,95 @@ class MarketApiIntegrationTest {
                 "SELECT has_table_privilege('training_runtime', 'market_ops.export_jobs', 'SELECT')",
                 Boolean.class))
         .isFalse();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT has_table_privilege('training_runtime', 'business.housing_records', 'SELECT')",
+                Boolean.class))
+        .isFalse();
+  }
+
+  @Test
+  void liveCrudAdvancesRevisionWhileFrozenDatasetRemainsImmutable() throws Exception {
+    JdbcTemplate live = new JdbcTemplate(queryDataSource);
+    long initialRevision =
+        live.queryForObject(
+            "SELECT data_revision FROM business.data_state WHERE singleton", Long.class);
+    long initialRows =
+        live.queryForObject("SELECT count(*) FROM business.housing_records", Long.class);
+
+    String jdbcUrl;
+    try (Connection connection = queryDataSource.getConnection()) {
+      jdbcUrl = connection.getMetaData().getURL();
+    }
+
+    UUID snapshotId;
+    String snapshotName = "integration-snapshot-" + UUID.randomUUID();
+    String trainingPassword =
+        System.getenv().getOrDefault("TRAINING_DATABASE_PASSWORD", "training_test");
+    try (Connection connection =
+            DriverManager.getConnection(jdbcUrl, "training_runtime", trainingPassword);
+        PreparedStatement statement =
+            connection.prepareStatement("SELECT catalog.snapshot_business_data(?, false)")) {
+      statement.setString(1, snapshotName);
+      try (ResultSet result = statement.executeQuery()) {
+        assertThat(result.next()).isTrue();
+        snapshotId = result.getObject(1, UUID.class);
+      }
+    }
+
+    Map<String, Object> frozenBefore = frozenDataset(jdbcUrl, trainingPassword, snapshotId);
+    assertThat(frozenBefore.get("source_kind")).isEqualTo("BUSINESS_SNAPSHOT");
+    assertThat(((Number) frozenBefore.get("source_revision")).longValue())
+        .isEqualTo(initialRevision);
+    assertThat(((Number) frozenBefore.get("row_count")).longValue()).isEqualTo(initialRows);
+
+    Long sourceId = null;
+    try {
+      sourceId =
+          live.queryForObject(
+              """
+              INSERT INTO business.housing_records (
+                square_footage, bedrooms, bathrooms, year_built, lot_size,
+                distance_to_city_center, school_rating, price
+              ) VALUES (1999, 3, 2.5, 2020, 7000, 4.000, 8.500, 999998.00)
+              RETURNING source_id
+              """,
+              Long.class);
+      long insertedRevision =
+          live.queryForObject(
+              "SELECT data_revision FROM business.data_state WHERE singleton", Long.class);
+      assertThat(insertedRevision).isEqualTo(initialRevision + 1);
+
+      mvc.perform(
+              get("/api/v2/market/properties")
+                  .param("price_gte", "999998.00")
+                  .param("price_lte", "999998.00"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data_revision").value(insertedRevision))
+          .andExpect(jsonPath("$.items[0].source_id").value(sourceId));
+
+      live.update(
+          "UPDATE business.housing_records SET price = 999997.00 WHERE source_id = ?", sourceId);
+      long updatedRevision =
+          live.queryForObject(
+              "SELECT data_revision FROM business.data_state WHERE singleton", Long.class);
+      assertThat(updatedRevision).isEqualTo(insertedRevision + 1);
+      assertThat(
+              live.queryForObject(
+                  "SELECT row_revision FROM business.housing_records WHERE source_id = ?",
+                  Long.class,
+                  sourceId))
+          .isEqualTo(2L);
+
+      Map<String, Object> frozenAfter = frozenDataset(jdbcUrl, trainingPassword, snapshotId);
+      assertThat(frozenAfter).isEqualTo(frozenBefore);
+      assertThat(frozenDatasetRowCount(jdbcUrl, trainingPassword, snapshotId))
+          .isEqualTo(initialRows);
+    } finally {
+      if (sourceId != null) {
+        live.update("DELETE FROM business.housing_records WHERE source_id = ?", sourceId);
+      }
+    }
   }
 
   private List<Long> pageAll(String sort, int limit) throws Exception {
@@ -813,7 +903,6 @@ class MarketApiIntegrationTest {
     do {
       var request =
           get("/api/v2/market/properties")
-              .param("dataset_version_id", DATASET_ID.toString())
               .param("sort", sort)
               .param("limit", Integer.toString(limit));
       if (cursor != null) request.param("cursor", cursor);
@@ -862,14 +951,52 @@ class MarketApiIntegrationTest {
     String options = pdfOptions == null ? "" : ",\"pdf_options\":" + pdfOptions;
     String filterScope = filters == null ? "" : ",\"filters\":" + filters;
     return """
-                {"format":"%s","selection":{"scope":{"dataset_version_id":"%s"%s},
+                {"format":"%s","selection":{"scope":{%s},
                 "sort":[{"field":"price","direction":"asc"}]}%s}
                 """
-        .formatted(format, DATASET_ID, filterScope, options);
+        .formatted(
+            format, filterScope.startsWith(",") ? filterScope.substring(1) : filterScope, options);
   }
 
   private JsonNode json(MvcResult result) throws Exception {
     return objectMapper.readTree(result.getResponse().getContentAsByteArray());
+  }
+
+  private static Map<String, Object> frozenDataset(String jdbcUrl, String password, UUID snapshotId)
+      throws Exception {
+    try (Connection connection =
+            DriverManager.getConnection(jdbcUrl, "training_runtime", password);
+        PreparedStatement statement =
+            connection.prepareStatement(
+                """
+                SELECT source_revision, row_count, trim(content_sha256), source_kind
+                FROM catalog.dataset_versions WHERE dataset_version_id = ?
+                """)) {
+      statement.setObject(1, snapshotId);
+      try (ResultSet result = statement.executeQuery()) {
+        assertThat(result.next()).isTrue();
+        return Map.of(
+            "source_revision", result.getLong(1),
+            "row_count", result.getLong(2),
+            "content_sha256", result.getString(3),
+            "source_kind", result.getString(4));
+      }
+    }
+  }
+
+  private static long frozenDatasetRowCount(String jdbcUrl, String password, UUID snapshotId)
+      throws Exception {
+    try (Connection connection =
+            DriverManager.getConnection(jdbcUrl, "training_runtime", password);
+        PreparedStatement statement =
+            connection.prepareStatement(
+                "SELECT count(*) FROM catalog.dataset_records WHERE dataset_version_id = ?")) {
+      statement.setObject(1, snapshotId);
+      try (ResultSet result = statement.executeQuery()) {
+        assertThat(result.next()).isTrue();
+        return result.getLong(1);
+      }
+    }
   }
 
   private static BigDecimal metric(JsonNode response, String id) {

@@ -17,6 +17,7 @@ import java.util.Set;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Validates, fingerprints, caches, and executes aggregate market queries. */
@@ -38,21 +39,23 @@ public class StatisticsService {
     this.statistics = required(cacheManager, "statistics");
   }
 
-  /** Returns bounded statistics pinned to the resolved dataset version. */
-  @Transactional(transactionManager = "queryTransactionManager", readOnly = true, timeout = 3)
+  /** Returns bounded statistics pinned to the current live-data revision. */
+  @Transactional(
+      transactionManager = "queryTransactionManager",
+      readOnly = true,
+      isolation = Isolation.REPEATABLE_READ,
+      timeout = 3)
   public StatisticsResult query(StatisticsCommand command) {
     validate(command);
 
-    ResolvedSelection resolved =
-        marketQueryService.resolve(
-            new Selection(command.requestedDatasetVersionId(), command.filters(), null));
+    ResolvedSelection resolved = marketQueryService.resolve(new Selection(command.filters(), null));
     String fingerprint =
         QueryFingerprint.statistics(
             resolved, command.metrics(), command.groupBy(), command.order(), command.limit());
     ResolvedSelection statisticsSelection =
         new ResolvedSelection(
-            resolved.datasetVersion(), resolved.filters(), resolved.sort(), fingerprint);
-    String key = "v2|" + resolved.datasetVersion().contentSha256() + '|' + fingerprint;
+            resolved.dataRevision(), resolved.filters(), resolved.sort(), fingerprint);
+    String key = "v2|" + resolved.dataRevision() + '|' + fingerprint;
 
     return statistics.get(key, () -> marketReadDao.queryStatistics(statisticsSelection, command));
   }

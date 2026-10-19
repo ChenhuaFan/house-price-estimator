@@ -17,11 +17,11 @@ import java.util.List;
 public final class QueryFingerprint {
   private QueryFingerprint() {}
 
-  /** Fingerprints one dataset, filter, and sort selection. */
-  public static String selection(String contentSha256, Filters filters, Sort sort) {
+  /** Fingerprints one live-data revision, filter, and sort selection. */
+  public static String selection(long dataRevision, Filters filters, Sort sort) {
     return digest(
         "v2|"
-            + contentSha256
+            + dataRevision
             + '|'
             + filters(filters)
             + '|'

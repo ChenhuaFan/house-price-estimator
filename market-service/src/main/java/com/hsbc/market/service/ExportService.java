@@ -62,7 +62,7 @@ public class ExportService {
     this.totalCapacity = properties.export().queueCapacity() + properties.export().workers();
   }
 
-  /** Creates an idempotent job pinned to a resolved dataset selection. */
+  /** Creates an idempotent job pinned to a server-owned live-data revision. */
   @Transactional(transactionManager = "queryTransactionManager")
   public Job create(CreateCommand command) {
     validate(command);
@@ -94,7 +94,7 @@ public class ExportService {
             command.idempotencyKey(),
             requestHash,
             payload,
-            resolved.datasetVersion().id(),
+            resolved.dataRevision(),
             resolved.queryFingerprint(),
             command.format(),
             Status.QUEUED,

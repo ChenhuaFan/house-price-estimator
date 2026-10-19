@@ -44,7 +44,7 @@ public final class ExportDomain {
       UUID idempotencyKey,
       String requestSha256,
       String requestPayload,
-      UUID datasetVersionId,
+      long sourceRevision,
       String queryFingerprint,
       Format format,
       Status status,

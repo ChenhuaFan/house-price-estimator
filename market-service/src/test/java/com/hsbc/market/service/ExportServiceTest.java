@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.util.unit.DataSize;
 
 class ExportServiceTest {
-  private static final UUID VERSION = UUID.fromString("00000000-0000-4000-8000-000000000001");
+  private static final long DATA_REVISION = 1;
   private static final Instant NOW = Instant.parse("2026-10-19T00:00:00Z");
 
   @TempDir Path directory;
@@ -49,11 +49,11 @@ class ExportServiceTest {
     jobs = mock(ExportJobDao.class);
     storage = mock(LocalExportStorage.class);
     queryService = mock(MarketQueryService.class);
-    selection = new MarketDomain.Selection(VERSION, MarketDomain.Filters.empty(), null);
+    selection = new MarketDomain.Selection(MarketDomain.Filters.empty(), null);
     when(queryService.resolve(any()))
         .thenReturn(
             new MarketDomain.ResolvedSelection(
-                new MarketDomain.DatasetVersion(VERSION, "a".repeat(64)),
+                DATA_REVISION,
                 MarketDomain.Filters.empty(),
                 new MarketDomain.Sort(
                     MarketDomain.SortField.SOURCE_ID, MarketDomain.SortDirection.ASC),
@@ -128,7 +128,7 @@ class ExportServiceTest {
             conflicting.idempotencyKey(),
             "f".repeat(64),
             conflicting.requestPayload(),
-            conflicting.datasetVersionId(),
+            conflicting.sourceRevision(),
             conflicting.queryFingerprint(),
             conflicting.format(),
             conflicting.status(),
@@ -213,7 +213,7 @@ class ExportServiceTest {
         UUID.randomUUID(),
         "a".repeat(64),
         "{}",
-        VERSION,
+        DATA_REVISION,
         "sha256:" + "b".repeat(64),
         Format.CSV,
         status,
@@ -242,7 +242,7 @@ class ExportServiceTest {
         source.idempotencyKey(),
         source.requestSha256(),
         source.requestPayload(),
-        source.datasetVersionId(),
+        source.sourceRevision(),
         source.queryFingerprint(),
         source.format(),
         status,

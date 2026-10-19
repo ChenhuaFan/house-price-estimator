@@ -8,7 +8,6 @@ import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /** Legacy response models retained for v1 compatibility endpoints. */
 public final class V1Models {
@@ -35,8 +34,7 @@ public final class V1Models {
   public record ChartPoint(String label, BigDecimal value) {}
 
   public record MarketAnalysis(
-      UUID datasetVersionId,
-      String datasetContentSha256,
+      long dataRevision,
       long matchingCount,
       int page,
       int size,

@@ -84,19 +84,18 @@ describe("portal route handlers", () => {
     expect((fetchMock.mock.calls[0]?.[0] as URL).toString()).toBe("http://market:8080/api/v2/market/properties?price_gte=100000.00&cursor=opaque%2Fvalue");
   });
 
-  it("assembles a version-pinned dashboard for post-hydration client reads", async () => {
-    const dataset = { id: "00000000-0000-4000-8000-000000000001", content_sha256: "a".repeat(64) };
+  it("assembles a revision-consistent dashboard for post-hydration client reads", async () => {
     const propertyPage = {
-      dataset_version: dataset,
+      data_revision: 1,
       query_fingerprint: `sha256:${"b".repeat(64)}`,
       items: [],
       page: { limit: 20, has_more: false },
     };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(propertyPage), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ dataset_version: dataset, query_fingerprint: "overview", groups: [{ key: {}, values: [{ metric_id: "count", value: "0" }] }] }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ dataset_version: dataset, query_fingerprint: "bedrooms", groups: [] }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ dataset_version: dataset, query_fingerprint: "schools", groups: [] }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data_revision: 1, query_fingerprint: "overview", groups: [{ key: {}, values: [{ metric_id: "count", value: "0" }] }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data_revision: 1, query_fingerprint: "bedrooms", groups: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data_revision: 1, query_fingerprint: "schools", groups: [] }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await dashboard(apiRequest("/api/market/dashboard?price_gte=250000"));

@@ -22,7 +22,6 @@ public class PropertiesApiController implements PropertiesApi {
   @Override
   public ResponseEntity<PropertyPage> listProperties(
       UUID correlationId,
-      UUID datasetVersionId,
       String priceGte,
       String priceLte,
       Long squareFootageGte,
@@ -44,7 +43,6 @@ public class PropertiesApiController implements PropertiesApi {
       String cursor) {
     var selection =
         mapper.propertySelection(
-            datasetVersionId,
             priceGte,
             priceLte,
             squareFootageGte,

@@ -71,3 +71,37 @@ def test_rejected_evaluation_stops_before_publication(
 
     with pytest.raises(RuntimeError, match="rejected"):
         pipeline.run_pipeline(settings(tmp_path), DATASET_ID)
+
+
+def test_pipeline_snapshots_live_business_data_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(pipeline, "uuid4", lambda: RUN_ID)
+
+    class FakeRegistry:
+        def __init__(self, database_url: str) -> None:
+            assert database_url == "postgresql://unused"
+
+        def snapshot_business_dataset(self, name: str) -> UUID:
+            calls.append(("snapshot", name))
+            return DATASET_ID
+
+    monkeypatch.setattr(pipeline, "Registry", FakeRegistry)
+    monkeypatch.setattr(
+        pipeline,
+        "export_dataset",
+        lambda config, dataset_id, run_id: calls.append(("export", dataset_id, run_id)),
+    )
+    monkeypatch.setattr(pipeline, "train", lambda *args: None)
+    monkeypatch.setattr(pipeline, "evaluate", lambda *args: True)
+    monkeypatch.setattr(pipeline, "publish", lambda *args, **kwargs: None)
+
+    pipeline.run_pipeline(
+        settings(tmp_path), dataset_version_name="business-snapshot-release-candidate"
+    )
+
+    assert calls == [
+        ("snapshot", "business-snapshot-release-candidate"),
+        ("export", DATASET_ID, RUN_ID),
+    ]

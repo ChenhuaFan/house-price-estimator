@@ -9,6 +9,7 @@ const exportJob = {
   export_id: exportId,
   status: "QUEUED" as const,
   format: "CSV" as const,
+  data_revision: 1,
   query_fingerprint: `sha256:${"a".repeat(64)}`,
   created_at: "2026-10-19T00:00:00Z",
   expires_at: "2026-10-20T00:00:00Z",
@@ -74,7 +75,7 @@ describe("browser API adapters", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ ...exportJob, status: "RUNNING" }), { status: 200, headers: { "retry-after": "2" } }))
       .mockResolvedValueOnce(new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
-    const request = { format: "CSV" as const, selection: { scope: { dataset_version_id: exportId }, sort: [] } };
+    const request = { format: "CSV" as const, selection: { scope: {}, sort: [] } };
     await expect(createExport(request, correlation)).resolves.toEqual({ job: exportJob, retryAfterSeconds: 4 });
     await expect(getExport(exportId)).resolves.toMatchObject({ job: { status: "RUNNING" }, retryAfterSeconds: 2 });
     await expect(cancelExport(exportId)).resolves.toBeUndefined();

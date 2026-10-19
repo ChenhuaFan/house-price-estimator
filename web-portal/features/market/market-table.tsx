@@ -46,7 +46,7 @@ export function MarketTable({
   return (
     <Panel className="overflow-hidden" aria-labelledby="properties-heading" aria-busy={disabled}>
       <div className="flex flex-col gap-2 border-b border-border-ui px-4 py-3 sm:flex-row sm:items-end sm:justify-between">
-        <div><h2 id="properties-heading" className="text-lg font-extrabold text-ink">Matching properties ({formatNumber(model.overview.count)})</h2><p className="mt-0.5 text-xs text-ink-muted">Server-sorted records from one immutable dataset version.</p></div>
+        <div><h2 id="properties-heading" className="text-lg font-extrabold text-ink">Matching properties ({formatNumber(model.overview.count)})</h2><p className="mt-0.5 text-xs text-ink-muted">Server-sorted records from the live business database.</p></div>
         <p className="numeric text-sm font-bold text-ink-muted">{model.records.length} shown</p>
       </div>
       <div className="max-w-full overflow-x-auto" tabIndex={0} aria-label="Market records; scroll horizontally when needed">

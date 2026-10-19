@@ -2,16 +2,23 @@
 
 `training/` is a one-shot, offline workspace for the Task 1 regression model. It does not run as an application service and it does not depend on the portal, estimator service, market service, or model service.
 
-The workflow reads one explicit immutable dataset version from PostgreSQL, writes a canonical snapshot, creates a reproducible held-out split, evaluates an ordinary least-squares `LinearRegression`, records the result, and publishes an accepted model through the model registry.
+The normal workflow first freezes the current `business.housing_records` state as an immutable
+catalog dataset, writes the same records as a canonical CSV snapshot, creates a reproducible
+held-out split, evaluates an ordinary least-squares `LinearRegression`, records the result, and
+publishes an accepted model through the model registry. An explicit historical dataset UUID may be
+supplied only when intentionally replaying an existing snapshot.
 
 ## Access boundaries
 
 The training container uses `TRAINING_DATABASE_URL` and the `training_runtime` role. That role can:
 
-- read the selected version from `catalog.dataset_versions` and `catalog.housing_records`;
+- execute the controlled business-to-dataset freeze function;
+- read immutable versions from `catalog.dataset_versions` and `catalog.dataset_records`;
 - execute controlled functions that write training runs, evaluation metrics, and model versions under `ml_registry`.
 
-It cannot insert, update, or delete the central housing catalog. It also cannot write estimate history.
+It cannot read or mutate the live business table, mutate frozen catalog rows, or write estimate
+history. The security-definer freeze function is its only path from live business data to a new
+dataset version.
 
 The runtime paths are configured through:
 
@@ -27,7 +34,9 @@ Compose stores the three filesystem roots in separate named volumes. `model-serv
 
 ## Canonical fields
 
-The initial labelled source is `requirements/House Price Dataset.csv`. Normal training does not read that file directly; migration `V005` imports it into the versioned catalog, and training exports the chosen database version.
+The initial labelled source is `requirements/House Price Dataset.csv`. The single initialization
+migration loads those rows into the live business table and immediately freezes `house-price-v1`.
+Normal training never reads the source file directly.
 
 | Field | Meaning and unit | Contract |
 | --- | --- | --- |
@@ -96,11 +105,13 @@ From the repository root, ensure `.env` exists and contains non-example password
 
 ```sh
 make train \
-  DATASET_VERSION_ID=00000000-0000-4000-8000-000000000001 \
   MODEL_VERSION=housing-linear-interview-v2
 ```
 
-This runs export, split/train, evaluation, publication, and activation. If `MODEL_VERSION` is omitted, the pipeline derives an immutable name from the training-run UUID.
+This freezes the current business revision, then runs export, split/train, evaluation, publication,
+and activation. If `MODEL_VERSION` is omitted, the pipeline derives an immutable name from the
+training-run UUID. To replay an existing frozen dataset, additionally pass
+`DATASET_VERSION_ID=<uuid>`.
 
 `make bootstrap` uses the same pipeline only when the database has no active model. `make up` never starts training.
 
@@ -113,11 +124,12 @@ make db-migrate
 docker compose --profile training build training
 ```
 
-Choose one UUID and reuse it for the first three stages:
+Freeze the current business data, then choose one run UUID:
 
 ```sh
+make snapshot-dataset DATASET_VERSION_NAME=house-price-manual-v2
 TRAINING_RUN_ID=11111111-1111-4111-8111-111111111111
-DATASET_VERSION_ID=00000000-0000-4000-8000-000000000001
+DATASET_VERSION_ID=<dataset_version_id printed by snapshot-dataset>
 ```
 
 Export the immutable snapshot and create the run:

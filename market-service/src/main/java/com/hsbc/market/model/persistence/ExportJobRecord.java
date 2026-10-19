@@ -9,7 +9,7 @@ public record ExportJobRecord(
     UUID idempotencyKey,
     String requestSha256,
     String requestPayload,
-    UUID datasetVersionId,
+    long sourceRevision,
     String queryFingerprint,
     String format,
     String status,

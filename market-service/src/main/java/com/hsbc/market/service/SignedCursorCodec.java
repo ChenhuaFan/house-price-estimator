@@ -9,7 +9,7 @@ import java.util.Base64;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
-/** Encodes tamper-evident cursors bound to an immutable resolved selection. */
+/** Encodes tamper-evident cursors bound to a live-data revision and resolved selection. */
 public final class SignedCursorCodec {
   private final byte[] secret;
 
@@ -26,7 +26,7 @@ public final class SignedCursorCodec {
         String.join(
             "|",
             "2",
-            selection.datasetVersion().id().toString(),
+            Long.toString(selection.dataRevision()),
             selection.queryFingerprint(),
             selection.sort().field().apiName(),
             selection.sort().direction().name(),
@@ -51,12 +51,12 @@ public final class SignedCursorCodec {
       String[] parts = new String(payloadBytes, StandardCharsets.UTF_8).split("\\|", -1);
       if (parts.length != 7
           || !"2".equals(parts[0])
-          || !selection.datasetVersion().id().toString().equals(parts[1])
+          || !Long.toString(selection.dataRevision()).equals(parts[1])
           || !selection.queryFingerprint().equals(parts[2])
           || !selection.sort().field().apiName().equals(parts[3])
           || !selection.sort().direction().name().equals(parts[4])) {
         throw MarketException.conflict(
-            "QUERY_STATE_MISMATCH", "cursor does not match the dataset, filters, or sort");
+            "QUERY_STATE_MISMATCH", "cursor does not match the data revision, filters, or sort");
       }
       return new CursorPosition(parts[5], Long.parseLong(parts[6]));
     } catch (MarketException error) {

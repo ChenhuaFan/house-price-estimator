@@ -7,9 +7,11 @@ info:
     identifier: LicenseRef-Proprietary
   description: |
     Contract-first API for the Java Property Market Analysis backend.
-    All market reads are pinned to one immutable dataset version. CSV and PDF
-    exports are durable asynchronous jobs whose content is downloaded by a
-    separate streaming endpoint.
+    Business reads always use the current mutable property store; callers do not
+    select a training dataset. The server returns a data revision for cache and
+    pagination consistency. Immutable dataset versions exist only in the
+    training and model-audit pipeline. CSV and PDF exports are durable
+    asynchronous jobs whose content is downloaded by a separate endpoint.
 servers:
   - url: /
     description: Same-origin or configured market-service base URL
@@ -31,7 +33,6 @@ paths:
       summary: List filtered properties using keyset pagination
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
-        - $ref: '#/components/parameters/DatasetVersionId'
         - $ref: '#/components/parameters/PriceGte'
         - $ref: '#/components/parameters/PriceLte'
         - $ref: '#/components/parameters/SquareFootageGte'
@@ -290,11 +291,6 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
-    DatasetVersionId:
-      name: dataset_version_id
-      in: query
-      required: false
-      schema: {type: string, format: uuid}
     PriceGte:
       name: price_gte
       in: query
@@ -436,16 +432,6 @@ components:
       pattern: '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$'
       example: '482731.38'
 
-    DatasetVersion:
-      type: object
-      additionalProperties: false
-      required: [id, content_sha256]
-      properties:
-        id: {type: string, format: uuid}
-        content_sha256:
-          type: string
-          pattern: '^[0-9a-f]{64}$'
-
     IntegerRange:
       type: object
       additionalProperties: false
@@ -474,7 +460,6 @@ components:
       type: object
       additionalProperties: false
       properties:
-        dataset_version_id: {type: string, format: uuid}
         filters: {$ref: '#/components/schemas/MarketFilters'}
     SortField:
       type: string
@@ -554,9 +539,13 @@ components:
     PropertyPage:
       type: object
       additionalProperties: false
-      required: [dataset_version, query_fingerprint, items, page]
+      required: [data_revision, query_fingerprint, items, page]
       properties:
-        dataset_version: {$ref: '#/components/schemas/DatasetVersion'}
+        data_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Server-owned revision of the mutable business store used by this response.
         query_fingerprint: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
         items:
           type: array
@@ -662,9 +651,13 @@ components:
     StatisticsResponse:
       type: object
       additionalProperties: false
-      required: [dataset_version, query_fingerprint, groups]
+      required: [data_revision, query_fingerprint, groups]
       properties:
-        dataset_version: {$ref: '#/components/schemas/DatasetVersion'}
+        data_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Server-owned revision of the mutable business store used by this response.
         query_fingerprint: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
         groups:
           type: array
@@ -700,11 +693,12 @@ components:
     ExportJob:
       type: object
       additionalProperties: false
-      required: [export_id, status, format, query_fingerprint, created_at, expires_at]
+      required: [export_id, status, format, data_revision, query_fingerprint, created_at, expires_at]
       properties:
         export_id: {type: string, format: uuid}
         status: {$ref: '#/components/schemas/ExportStatus'}
         format: {$ref: '#/components/schemas/ExportFormat'}
+        data_revision: {type: integer, format: int64, minimum: 1}
         query_fingerprint: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
         created_at: {type: string, format: date-time}
         started_at: {type: string, format: date-time}

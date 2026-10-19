@@ -149,7 +149,6 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
 
     params.set("sort", model.query.sort);
     params.set("limit", String(model.query.limit));
-    params.set("dataset_version_id", model.datasetVersion.id);
     return params;
   }
 
@@ -169,7 +168,6 @@ export function MarketDashboard({ initialModel }: { initialModel: MarketPageMode
     const params = new URLSearchParams({
       sort: model.query.sort,
       limit: String(model.query.limit),
-      dataset_version_id: model.datasetVersion.id,
     });
     void updateDashboard(params);
   }

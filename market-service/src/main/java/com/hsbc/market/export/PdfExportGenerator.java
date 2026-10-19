@@ -137,10 +137,7 @@ public class PdfExportGenerator {
                 + DateTimeFormatter.ISO_INSTANT.format(Instant.now().atOffset(ZoneOffset.UTC)),
             body));
     document.add(
-        new Paragraph("Dataset version: " + snapshot.selection().datasetVersion().id(), body));
-    document.add(
-        new Paragraph(
-            "Dataset SHA-256: " + snapshot.selection().datasetVersion().contentSha256(), body));
+        new Paragraph("Business data revision: " + snapshot.selection().dataRevision(), body));
     document.add(
         new Paragraph("Query fingerprint: " + snapshot.selection().queryFingerprint(), body));
     document.add(new Paragraph("Active filters", heading));
@@ -157,13 +154,7 @@ public class PdfExportGenerator {
     List<Metric> metrics = snapshot.pdfOptions().metrics();
     if (metrics != null && !metrics.isEmpty()) {
       StatisticsCommand command =
-          new StatisticsCommand(
-              snapshot.selection().datasetVersion().id(),
-              snapshot.selection().filters(),
-              metrics,
-              null,
-              null,
-              1);
+          new StatisticsCommand(snapshot.selection().filters(), metrics, null, null, 1);
       StatisticsResult result = marketReadDao.queryExportStatistics(snapshot.selection(), command);
       PdfPTable table = new PdfPTable(2);
       table.setWidthPercentage(65);
@@ -210,7 +201,6 @@ public class PdfExportGenerator {
     Metric average = new Metric("average_price", MetricMethod.AVG, MetricField.PRICE);
     StatisticsCommand chartCommand =
         new StatisticsCommand(
-            snapshot.selection().datasetVersion().id(),
             snapshot.selection().filters(),
             List.of(average),
             new GroupBy(GroupField.BEDROOMS, null),

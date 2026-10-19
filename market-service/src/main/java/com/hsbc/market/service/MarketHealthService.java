@@ -16,10 +16,10 @@ public class MarketHealthService {
     this.exportJobDao = exportJobDao;
   }
 
-  /** Verifies that the active dataset catalog can be queried. */
+  /** Verifies that the mutable business data and its revision can be queried. */
   @Transactional(transactionManager = "queryTransactionManager", readOnly = true, timeout = 3)
-  public boolean catalogReadable() {
-    return marketReadDao.catalogReadable();
+  public boolean businessDataReadable() {
+    return marketReadDao.businessDataReadable();
   }
 
   /** Verifies that export job state is writable through the query pool. */

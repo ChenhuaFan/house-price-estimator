@@ -27,7 +27,7 @@ Workloads are classified before technologies are assigned:
 | Portal rendering and browser API mediation | Synchronous HTTP | Stateless |
 | Single/batch inference | Synchronous HTTP | Verified model held in process memory |
 | Estimation and history | Synchronous HTTP plus one local database transaction | PostgreSQL `estimator` schema |
-| Market queries, statistics, and charts | Synchronous HTTP | PostgreSQL `catalog`; disposable in-process cache |
+| Market queries, statistics, and charts | Synchronous HTTP | PostgreSQL `business`; disposable in-process cache |
 | Market CSV/PDF exports | Asynchronous durable jobs plus synchronous status/download HTTP | PostgreSQL `market_ops` job metadata; bounded export storage |
 | Dataset export, model training, evaluation, and publication | Explicit one-shot CLI/container workflow | Snapshot/run/artifact files plus PostgreSQL `ml_registry` |
 | Schema creation and initial seed | Explicit one-shot migration job | PostgreSQL |
@@ -45,11 +45,11 @@ flowchart LR
         subgraph Public[Host-published endpoints: loopback by default, LAN optional]
             Portal[web-portal<br/>Next.js container]
             Model[model-service<br/>FastAPI container]
+            Market[market-service<br/>Spring Boot container]
         end
 
         subgraph Private[Private Docker Compose network]
             Estimator[estimator-service<br/>FastAPI container]
-            Market[market-service<br/>Spring Boot container]
             DB[(PostgreSQL)]
             Migration[db-migrate<br/>one-shot container]
             Training[training<br/>one-shot container profile]
@@ -77,7 +77,11 @@ flowchart LR
     Training --> Artifacts
 ```
 
-Every long-running component, including Next.js and both FastAPI applications, runs in Docker. Only `web-portal` and the Task 1 `model-service` are host-published by the base Compose file, and both bind to loopback by default. A documented LAN override changes the host bind address without changing the images. The browser does not connect directly to PostgreSQL or the private application services.
+Every long-running component, including Next.js and both FastAPI applications, runs in Docker.
+`web-portal`, the Task 1 `model-service`, and the Java `market-service` Swagger surface are
+host-published by the base Compose file and bind to loopback by default. A documented LAN override
+changes the host bind address without changing the images. The browser still reaches business APIs
+through the portal BFF and never connects directly to PostgreSQL.
 
 ## 4. Deployable Units
 
@@ -88,19 +92,23 @@ Every long-running component, including Next.js and both FastAPI applications, r
 | `web-portal` | Next.js 15 / Node.js 20 | Server-rendered application shell, client-side business-data loading, browser-facing route handlers, forms, charts, tables, and downloads | None |
 | `model-service` | Python 3.12 / FastAPI / Scikit-learn | Task 1 prediction, model information, health, active-model loading, and artifact verification | None; reads `ml_registry` and model artifacts |
 | `estimator-service` | Python 3.12 / FastAPI | Estimator validation, model orchestration, anonymous history, deletion, and comparison data | PostgreSQL `estimator` schema |
-| `market-service` | Java 21 / Spring Boot 3.4.4 | Versioned market queries, aggregates, chart series, sorting/filtering, what-if calls, Caffeine caching, and CSV/PDF generation | Reads PostgreSQL `catalog`; writes `market_ops.export_jobs` and bounded export files |
+| `market-service` | Java 21 / Spring Boot 3.4.4 | Live market queries, aggregates, chart series, sorting/filtering, what-if calls, Caffeine caching, and CSV/PDF generation | Reads and manages PostgreSQL `business`; writes `market_ops.export_jobs` and bounded export files |
 
-CSV and PDF generation belong to `market-service`. They use the same resolved dataset version, normalized filters, sort, aggregate result, chart series, and what-if result as the dashboard. A separate `report-service` would add a deployment boundary without independent data ownership, scaling needs, or lifecycle ownership.
+CSV and PDF generation belong to `market-service`. They use the same business-data revision,
+normalized filters, sort, aggregate result, chart series, and what-if result as the dashboard. A
+separate `report-service` would add a deployment boundary without independent data ownership,
+scaling needs, or lifecycle ownership.
 
 ### 4.2 One-shot units and infrastructure
 
 | Unit | Responsibility | Invocation |
 | --- | --- | --- |
 | `db-migrate` | Create roles/schemas/tables/functions and seed `house-price-v1` | Automatically before application readiness or explicitly through `make db-migrate` |
-| `training` | Export a chosen dataset version, split locally, train, evaluate, register, and promote a model | Explicit Compose profile or `make train` / `make publish`; never normal service startup |
-| PostgreSQL 17 | Central catalog, ML registry, and anonymous estimate history | Persistent Compose service |
+| `training` | Freeze current business data (or replay a chosen dataset), export, split, train, evaluate, register, and promote | Explicit Compose profile or `make train` / `make publish`; never normal service startup |
+| PostgreSQL 17 | Mutable business data, immutable training catalog, ML registry, estimate history, and export state | Persistent Compose service |
 
-PostgreSQL is infrastructure, not an application microservice. The three application schemas and their least-privilege roles are defined in [`data-schema.md`](data-schema.md).
+PostgreSQL is infrastructure, not an application microservice. The five application schemas and
+their least-privilege roles are defined in [`data-schema.md`](data-schema.md).
 
 ## 5. Repository Shape
 
@@ -139,7 +147,7 @@ The portal is the only browser-facing application surface.
 - React Server Components render the shared shell, navigation, page titles, and non-business explanatory content.
 - Client Components load business data through same-origin BFF routes and own interactive forms, filter controls, comparison selection, tables, and chart interaction.
 - Smart feature containers own requests, mutations, URL state, and export orchestration; presentational views receive data and callbacks without importing routing or transport concerns.
-- URL query parameters are the source of truth for market filters, sort, page, and selected dataset version so views are refreshable and shareable.
+- URL query parameters are the source of truth for market filters, sort, and page so views are refreshable and shareable. Dataset identity is not browser state.
 - Browser-facing route handlers act as a small backend-for-frontend: they forward the opaque client cookie, add correlation metadata, normalize downstream errors, and stream CSV/PDF responses.
 - The portal never performs SQL, loads model artifacts, or owns business data.
 
@@ -190,12 +198,12 @@ Controller
 
 Controllers implement the generated OpenAPI interfaces and handle only HTTP concerns. Services own business validation, orchestration, caching decisions, and transaction boundaries. DAO classes are the only database-facing types used by Services. Mapper interfaces and their XML files contain SQL and result mappings. The detailed package layout and layer rules are defined in [`spring-boot-technical-design.md`](spring-boot-technical-design.md).
 
-- Every request resolves one explicit or active immutable dataset version before querying records.
+- Every business query reads the current `business.housing_records` state and its server-owned `data_revision`; clients never select a training dataset.
 - One normalized filter/sort specification defines the record table, aggregate statistics, chart series, CSV, and PDF.
-- SQL performs filtering, ordering, pagination, and aggregate calculations. The application does not load the complete catalog at startup.
-- What-if analysis validates the seven inputs and calls `model-service`; it never writes the prediction into `catalog`.
-- CSV and PDF rendering run as bounded asynchronous jobs and consume the same immutable query definition used by the dashboard.
-- Caffeine caches only reconstructible query results. Cache keys include the dataset content hash, normalized query, sort/page where relevant, and model version for what-if results.
+- SQL performs filtering, ordering, pagination, and aggregate calculations. The application does not load the complete business table at startup.
+- What-if analysis validates the seven inputs and calls `model-service`; it does not read or write business rows.
+- CSV and PDF rendering run as bounded asynchronous jobs and consume the same revision-bound query definition used by the dashboard.
+- Caffeine caches only reconstructible query results. Cache keys include `data_revision`, normalized query, sort/page where relevant, and model version for what-if results.
 
 Export creation returns a durable job identifier. The portal polls job status and streams completed content from a separate endpoint. Worker, row, output-size, runtime, and retention limits keep the local implementation bounded.
 
@@ -203,13 +211,13 @@ Export creation returns a durable job identifier. The portal polls job status an
 
 Training is part of the system but not an always-on service and has no UI.
 
-- It creates a run before export begins.
-- It reads one explicit catalog dataset version through `training_runtime`.
+- Normal training first invokes the controlled function that freezes the current business revision; explicit historical replay skips that step.
+- It creates a run before CSV export begins and reads only immutable catalog rows through `training_runtime`.
 - It writes an immutable canonical snapshot and manages split, metrics, run-state, model, and metadata files.
 - It performs the deterministic local 80/20 evaluation protocol.
 - It records every run and every completed evaluation, including rejected models, through controlled `ml_registry` functions.
 - It registers an accepted model as `CANDIDATE`; promotion changes the single active model transactionally.
-- It cannot modify `catalog`.
+- It cannot read or modify the live business table and cannot directly modify catalog tables.
 
 Exact schemas, hashes, state transitions, filesystem protocols, and grants are defined in [`data-schema.md`](data-schema.md).
 
@@ -270,21 +278,22 @@ The idempotency lookup is read-only. For a genuinely new key, the estimate-write
 
 ### 8.2 Market analysis and exports
 
-1. After the server-rendered market shell hydrates, the browser asks the portal BFF for normalized filters, sort, page, and an optional explicit `dataset_version_id`.
-2. The market Controller maps the generated contract DTO to a Service request. The Service resolves exactly one immutable dataset version and calls the DAO.
-3. The DAO calls a MyBatis Mapper whose XML statement returns the matching page or aggregate rows from PostgreSQL under that version.
-4. The Service produces the response model from the same normalized query and returns the resolved version/hash through the Controller.
-5. The portal includes that resolved version in subsequent CSV/PDF requests.
+1. The server-rendered portal asks the Java API for normalized filters, sort, and an optional cursor; no dataset ID is sent.
+2. The market Controller maps the generated contract DTO to a Service request. The Service opens a `REPEATABLE READ` transaction, reads one `data_revision`, and calls the DAO.
+3. The DAO calls a MyBatis Mapper whose XML statement returns the matching live page or aggregate rows from the same database snapshot.
+4. The Service returns the revision with the response. The portal retries its parallel page/statistics assembly if concurrent writes caused different revisions.
+5. The portal sends only the normalized selection when creating CSV/PDF jobs; the Java service records the current revision.
 6. `ExportService` stores a durable `QUEUED` job through `ExportJobDao`; the portal receives `202 Accepted` and polls the job status endpoint.
 7. A bounded worker claims the job, streams rows through the DAO/Mapper XML path, writes the file atomically, and records completion metadata.
-8. The portal streams completed content from the download endpoint. The export path never scrapes the browser or uses a different dataset selection rule.
+8. The portal streams completed content from the download endpoint. If live data changed before a worker started, the stale job fails and must be recreated.
 9. A PDF request may include the current what-if result, including its model version and warnings.
 
 ### 8.3 Training and model publication
 
 ```mermaid
 flowchart LR
-    Start[start_run] --> Export[Export selected catalog version]
+    Freeze[Freeze current business revision] --> Start[start_run]
+    Start --> Export[Export immutable catalog version]
     Export --> Snapshot[Canonical immutable snapshot]
     Snapshot --> Split[Local deterministic 80/20 split]
     Split --> Evaluate[Train and evaluate]
@@ -305,17 +314,17 @@ Every file reference is content-verified before registration. A rejected evaluat
 
 | Owner | May write | Must not write |
 | --- | --- | --- |
-| Migrations | `catalog`, schema DDL, seed records, grants/functions | Runtime history or trained artifacts |
-| Training | Registry operations through controlled functions; snapshot/run/artifact files | `catalog`, estimator history |
+| Migrations | All schema DDL, initial live records/dataset, grants/functions | Runtime history or trained artifacts |
+| Training | Controlled dataset freeze and registry functions; snapshot/run/artifact files | Direct business/catalog table writes and estimator history |
 | Model service | Nothing | All database schemas and artifact files |
 | Estimator service | Scoped `estimator` records | `catalog`, `ml_registry` |
-| Market service | `market_ops.export_jobs` and controlled export files | `catalog`, `ml_registry`, and estimator history |
+| Market service | Live `business` records, `market_ops.export_jobs`, and controlled export files | `catalog`, `ml_registry`, and estimator history |
 | Portal | Browser cookie and URL/UI state | PostgreSQL and shared artifact volumes |
 
 There is no distributed transaction manager.
 
 - Estimate persistence is local to the estimator schema after a completed model call.
-- Market analysis is read-only against one resolved dataset version.
+- Market analysis reads one MVCC snapshot of the mutable business store and returns its revision.
 - Model registration and lifecycle transitions are local PostgreSQL transactions after immutable files exist.
 - Files may temporarily exist without a registry reference after a rollback, but a registry row may never point to partially written bytes.
 
@@ -329,7 +338,7 @@ The root `compose.yaml` defines:
 | `db-migrate` | One-shot | None | Migration files read-only |
 | `model-service` | Long-running | `127.0.0.1:8000` for Swagger/demo | `model_artifacts` read-only |
 | `estimator-service` | Long-running | None | None |
-| `market-service` | Long-running | None | Persistent bounded export storage |
+| `market-service` | Long-running | `127.0.0.1:8080` for Swagger/debug | Persistent bounded export storage |
 | `web-portal` | Long-running | `127.0.0.1:3000` | None |
 | `training` | Explicit profile / one-shot | None | Snapshots, runs, and artifacts read/write |
 
@@ -374,7 +383,7 @@ services:
 | LAN demo | `make up-lan` with `PUBLISH_HOST` / `.env.lan` | A specific LAN address when known, otherwise `0.0.0.0` | Open the portal and model Swagger from another trusted device on the same network |
 | FastAPI debug | Add `compose.api-debug.yaml` explicitly | Optional estimator port, default `8001 -> 8000` | Direct estimator Swagger/contract troubleshooting; not used by the portal |
 
-The LAN override does not rebuild different application images. It changes port bindings and supplies the externally visible portal origin. LAN mode must configure `PORTAL_PUBLIC_ORIGIN`, CORS/CSRF trusted origins, and any generated absolute URLs from the selected host address. It must not publish PostgreSQL or `market-service`.
+The LAN override does not rebuild different application images. It changes port bindings and supplies the externally visible portal origin. LAN mode must configure `PORTAL_PUBLIC_ORIGIN`, CORS/CSRF trusted origins, and any generated absolute URLs from the selected host address. It must not publish PostgreSQL.
 
 Because the application has no authentication, LAN and FastAPI-debug modes are explicit opt-ins for a trusted network. The README must instruct the operator to stop those modes after the demonstration and to rely on the host firewall rather than forwarding the ports to the public internet.
 
@@ -385,9 +394,9 @@ Because the application has no authentication, LAN and FastAPI-debug modes are e
 `make bootstrap` orchestrates:
 
 1. start PostgreSQL and wait for database readiness;
-2. apply every migration and the 50-row `house-price-v1` seed;
-3. create a training run for that explicit dataset version;
-4. export, split, train, evaluate, and register an accepted candidate;
+2. apply the clean final-state migration, load 50 live rows, and freeze `house-price-v1`;
+3. freeze the current business revision as a new immutable dataset for the run;
+4. export that dataset, split, train, evaluate, and register an accepted candidate;
 5. promote one model to `ACTIVE`;
 6. start/recreate `model-service` and wait for verified-model readiness;
 7. start the estimator, market service, and portal;
@@ -424,11 +433,14 @@ Only `market-service` uses an application cache.
 
 - Backend: bounded Caffeine cache through Spring Cache.
 - Default TTL: five minutes.
-- Key material: dataset content hash, normalized filters, sort, page/page-size when relevant, and model version for what-if results.
+- Key material: live business `data_revision`, normalized filters, sort, page/page-size when relevant, and model version for what-if results.
 - Cached values: immutable analysis DTOs or aggregate/chart projections.
 - Never cached as authority: estimate history, model lifecycle writes, money mutations, or generated export files.
 
-Dataset and model versions are part of keys, so activation logically invalidates prior entries by making them unreachable from requests for the new version. Old entries expire through the five-minute TTL or bounded-size eviction instead of requiring unsafe global mutation. Size limits prevent arbitrary filter combinations from growing memory without bound.
+Business revisions and model versions are part of keys, so a live write or model activation makes
+prior entries unreachable from new requests. Old entries expire through the five-minute TTL or
+bounded-size eviction instead of requiring unsafe global mutation. Size limits prevent arbitrary
+filter combinations from growing memory without bound.
 
 ## 14. Security Model
 
@@ -449,7 +461,10 @@ Authentication and public internet hardening require a separate architecture dec
 
 Every inbound request accepts or creates an `X-Correlation-ID`. A supplied value must be a valid UUID; it is normalized to lowercase hyphenated form, while a missing value is replaced with a generated UUIDv4. Invalid values return `400 INVALID_CORRELATION_ID` before business processing. The UUID is returned to the caller and propagated across portal, estimator/market, and model calls.
 
-Structured logs include service, operation, correlation ID, status, latency, downstream status, resolved dataset version, and model version where applicable. They exclude secrets, cookies, full input rows, and stack traces in client responses.
+Structured logs include service, operation, correlation ID, status, latency, downstream status,
+business data revision, and model version where applicable. Training logs additionally include the
+frozen dataset version. Logs exclude secrets, cookies, full input rows, and stack traces in client
+responses.
 
 The local demonstration exposes or logs:
 

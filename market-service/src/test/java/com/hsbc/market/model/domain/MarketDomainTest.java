@@ -78,7 +78,7 @@ class MarketDomainTest {
         .isEqualTo(
             new MarketDomain.Sort(
                 MarketDomain.SortField.SOURCE_ID, MarketDomain.SortDirection.ASC));
-    assertThat(new MarketDomain.Selection(null, null, null).filters())
+    assertThat(new MarketDomain.Selection(null, null).filters())
         .isEqualTo(MarketDomain.Filters.empty());
     assertThatThrownBy(() -> MarketDomain.Sort.parse("price")).isInstanceOf(MarketException.class);
     assertThatThrownBy(() -> MarketDomain.Sort.parse("price:sideways"))

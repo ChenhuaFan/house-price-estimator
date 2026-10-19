@@ -3,13 +3,6 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.hsbc.market.mapper.query.MarketQueryMapper">
-  <resultMap id="datasetVersionRecord" type="com.hsbc.market.model.persistence.DatasetVersionRecord">
-    <constructor>
-      <arg column="id" javaType="java.util.UUID"/>
-      <arg column="content_sha256" javaType="java.lang.String"/>
-    </constructor>
-  </resultMap>
-
   <resultMap id="propertyRecordRow" type="com.hsbc.market.model.persistence.PropertyRecordRow">
     <constructor>
       <arg column="source_id" javaType="_long"/>
@@ -40,7 +33,7 @@
   </sql>
 
   <sql id="filters">
-    dataset_version_id = #{parameters.scope.datasetVersionId}
+    1 = 1
     <if test="parameters.scope.priceGte != null">AND price &gt;= #{parameters.scope.priceGte}</if>
     <if test="parameters.scope.priceLte != null">AND price &lt;= #{parameters.scope.priceLte}</if>
     <if test="parameters.scope.squareFootageGte != null">AND square_footage &gt;= #{parameters.scope.squareFootageGte}</if>
@@ -166,25 +159,17 @@
     </choose>
   </sql>
 
-  <select id="catalogReadable" resultType="boolean">
-    SELECT EXISTS (SELECT 1 FROM catalog.dataset_versions WHERE is_active)
+  <select id="businessDataReadable" resultType="boolean">
+    SELECT EXISTS (SELECT 1 FROM business.data_state WHERE singleton)
   </select>
 
-  <select id="findActiveVersion" resultMap="datasetVersionRecord">
-    SELECT dataset_version_id AS id, trim(content_sha256) AS content_sha256
-    FROM catalog.dataset_versions
-    WHERE is_active
-  </select>
-
-  <select id="findVersion" resultMap="datasetVersionRecord">
-    SELECT dataset_version_id AS id, trim(content_sha256) AS content_sha256
-    FROM catalog.dataset_versions
-    WHERE dataset_version_id = #{id}
+  <select id="currentDataRevision" resultType="long">
+    SELECT data_revision FROM business.data_state WHERE singleton
   </select>
 
   <select id="selectPage" resultMap="propertyRecordRow">
     SELECT <include refid="propertyColumns"/>
-    FROM catalog.housing_records
+    FROM business.housing_records
     <where>
       <include refid="filters"/>
       <include refid="cursorPredicate"/>
@@ -195,7 +180,7 @@
 
   <select id="stream" resultMap="propertyRecordRow" fetchSize="1000">
     SELECT <include refid="propertyColumns"/>
-    FROM catalog.housing_records
+    FROM business.housing_records
     <where><include refid="filters"/></where>
     <include refid="orderBy"/>
     LIMIT #{parameters.limit}
@@ -203,9 +188,9 @@
 
   <select id="count" resultType="long">
     SELECT count(*)
-    FROM catalog.housing_records
+    FROM business.housing_records
     <where>
-      dataset_version_id = #{parameters.datasetVersionId}
+      1 = 1
       <if test="parameters.priceGte != null">AND price &gt;= #{parameters.priceGte}</if>
       <if test="parameters.priceLte != null">AND price &lt;= #{parameters.priceLte}</if>
       <if test="parameters.squareFootageGte != null">AND square_footage &gt;= #{parameters.squareFootageGte}</if>
@@ -250,7 +235,7 @@
       #{metric.id}, <include refid="metricExpression"/>
     </foreach>
     )::text AS values_json
-    FROM catalog.housing_records
+    FROM business.housing_records
     <where><include refid="filters"/></where>
     <if test="parameters.groupBy != null">
       GROUP BY 1, 2, 3, 4

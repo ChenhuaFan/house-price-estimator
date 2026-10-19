@@ -9,7 +9,7 @@
       <arg column="idempotency_key" javaType="java.util.UUID"/>
       <arg column="request_sha256" javaType="java.lang.String"/>
       <arg column="request_payload" javaType="java.lang.String"/>
-      <arg column="dataset_version_id" javaType="java.util.UUID"/>
+      <arg column="source_revision" javaType="_long"/>
       <arg column="query_fingerprint" javaType="java.lang.String"/>
       <arg column="format" javaType="java.lang.String"/>
       <arg column="status" javaType="java.lang.String"/>
@@ -34,7 +34,7 @@
 
   <sql id="columns">
     export_id, idempotency_key, request_sha256, request_payload::text AS request_payload,
-    dataset_version_id, query_fingerprint, format, status, state_revision,
+    source_revision, query_fingerprint, format, status, state_revision,
     cancel_requested, lease_owner, lease_expires_at, created_at, started_at,
     completed_at, expires_at, row_count, detail_row_count, details_truncated,
     content_key, content_type, content_length, content_sha256, failure_code
@@ -61,11 +61,11 @@
   <insert id="insert">
     INSERT INTO market_ops.export_jobs (
       export_id, idempotency_key, request_sha256, request_payload,
-      dataset_version_id, query_fingerprint, format, status,
+      source_revision, query_fingerprint, format, status,
       created_at, expires_at
     ) VALUES (
       #{exportId}, #{idempotencyKey}, #{requestSha256}, CAST(#{requestPayload} AS jsonb),
-      #{datasetVersionId}, #{queryFingerprint}, #{format}, #{status},
+      #{sourceRevision}, #{queryFingerprint}, #{format}, #{status},
       #{createdAt}, #{expiresAt}
     )
     ON CONFLICT (idempotency_key) DO NOTHING
@@ -93,7 +93,7 @@
     FROM candidate
     WHERE job.export_id = candidate.export_id
     RETURNING job.export_id, job.idempotency_key, job.request_sha256,
-      job.request_payload::text AS request_payload, job.dataset_version_id,
+      job.request_payload::text AS request_payload, job.source_revision,
       job.query_fingerprint, job.format, job.status, job.state_revision,
       job.cancel_requested, job.lease_owner, job.lease_expires_at, job.created_at,
       job.started_at, job.completed_at, job.expires_at, job.row_count,

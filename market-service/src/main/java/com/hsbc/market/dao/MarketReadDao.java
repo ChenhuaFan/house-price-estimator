@@ -2,18 +2,15 @@ package com.hsbc.market.dao;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hsbc.market.exception.MarketException;
 import com.hsbc.market.mapper.export.ExportMarketQueryMapper;
 import com.hsbc.market.mapper.query.MarketQueryMapper;
 import com.hsbc.market.model.domain.MarketDomain.CursorPosition;
-import com.hsbc.market.model.domain.MarketDomain.DatasetVersion;
 import com.hsbc.market.model.domain.MarketDomain.PropertyRecord;
 import com.hsbc.market.model.domain.MarketDomain.ResolvedSelection;
 import com.hsbc.market.model.domain.MarketDomain.StatisticsCommand;
 import com.hsbc.market.model.domain.MarketDomain.StatisticsGroup;
 import com.hsbc.market.model.domain.MarketDomain.StatisticsGroupKey;
 import com.hsbc.market.model.domain.MarketDomain.StatisticsResult;
-import com.hsbc.market.model.persistence.DatasetVersionRecord;
 import com.hsbc.market.model.persistence.PropertyRecordRow;
 import com.hsbc.market.model.persistence.StatisticsRowRecord;
 import com.hsbc.market.model.query.MarketSqlParameters;
@@ -25,14 +22,11 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.apache.ibatis.session.ResultHandler;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.stereotype.Repository;
 
@@ -46,45 +40,31 @@ public class MarketReadDao {
   private final ExportMarketQueryMapper exportMapper;
   private final ObjectMapper objectMapper;
   private final MeterRegistry registry;
-  private final Cache datasetVersions;
 
   public MarketReadDao(
       MarketQueryMapper queryMapper,
       ExportMarketQueryMapper exportMapper,
       ObjectMapper objectMapper,
-      MeterRegistry registry,
-      CacheManager cacheManager) {
+      MeterRegistry registry) {
     this.queryMapper = queryMapper;
     this.exportMapper = exportMapper;
     this.objectMapper = objectMapper;
     this.registry = registry;
-    this.datasetVersions = required(cacheManager, "datasetVersion");
   }
 
-  /** Resolves an explicit dataset version or the current active version. */
-  public DatasetVersion resolveDatasetVersion(UUID requestedVersionId) {
-    String key = requestedVersionId == null ? "active" : requestedVersionId.toString();
-    return datasetVersions.get(
-        key,
-        () ->
-            observe(
-                "interactive",
-                "resolve_dataset",
-                () -> {
-                  DatasetVersionRecord record =
-                      requestedVersionId == null
-                          ? queryMapper.findActiveVersion()
-                          : queryMapper.findVersion(requestedVersionId);
-                  if (record == null) {
-                    throw MarketException.notFound("dataset version was not found");
-                  }
-                  return new DatasetVersion(record.id(), record.contentSha256());
-                }));
+  /** Returns the server-owned revision of the current mutable business store. */
+  public long currentDataRevision() {
+    return observe("interactive", "resolve_revision", queryMapper::currentDataRevision);
   }
 
-  /** Checks that the active dataset catalog can be read. */
-  public boolean catalogReadable() {
-    return observe("interactive", "health", queryMapper::catalogReadable);
+  /** Returns the live-data revision through the export transaction/data source. */
+  public long currentExportDataRevision() {
+    return observe("export", "resolve_revision", exportMapper::currentDataRevision);
+  }
+
+  /** Checks that the mutable business store and its revision can be read. */
+  public boolean businessDataReadable() {
+    return observe("interactive", "health", queryMapper::businessDataReadable);
   }
 
   /** Reads one keyset-paginated property page for the resolved selection. */
@@ -170,7 +150,7 @@ public class MarketReadDao {
     registry.summary("market.statistics.groups", "lane", lane).record(groups.size());
     recordRows(lane, "statistics", groups.size());
 
-    return new StatisticsResult(selection.datasetVersion(), selection.queryFingerprint(), groups);
+    return new StatisticsResult(selection.dataRevision(), selection.queryFingerprint(), groups);
   }
 
   private void streamWith(
@@ -265,14 +245,6 @@ public class MarketReadDao {
         row.distanceToCityCenter(),
         row.schoolRating(),
         row.price());
-  }
-
-  private static Cache required(CacheManager manager, String name) {
-    Cache cache = manager.getCache(name);
-    if (cache == null) {
-      throw new IllegalStateException("missing cache: " + name);
-    }
-    return cache;
   }
 
   @FunctionalInterface

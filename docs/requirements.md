@@ -60,7 +60,12 @@ The PDF requires a trained regression model and performance metrics but does not
 
 - **REQ-TRAIN-001:** The repository must contain a self-contained top-level `training/` workspace. It may connect directly to PostgreSQL but must not depend on starting either application backend or the portal.
 - **REQ-TRAIN-002:** The training workspace must provide independent command-line scripts at `training/scripts/export_dataset.py`, `training/scripts/train.py`, `training/scripts/evaluate.py`, and `training/scripts/publish.py`. The scripts must be independently executable and suitable for automation.
-- **REQ-TRAIN-003:** Dataset export must use a read-only database role, require an explicit central `dataset_version_id`, select every valid labelled row in stable `source_id` order, and write an immutable CSV snapshot plus snapshot metadata under `training/data/snapshots/`. The snapshot must retain `source_id` for lineage, use `price` as the target, exclude `source_id` from model inputs, and contain the seven fields in `REQ-PRED-001`.
+- **REQ-TRAIN-003:** Normal training must transactionally freeze the current mutable business
+  records as a new immutable catalog dataset, then export that dataset in stable `source_id` order
+  to an immutable CSV plus metadata under `training/data/snapshots/`. Supplying an explicit
+  `dataset_version_id` must replay that historical dataset without reading newer business rows. The
+  snapshot must retain `source_id` for lineage, use `price` as the target, exclude `source_id` from
+  model inputs, and contain the seven fields in `REQ-PRED-001`.
 - **REQ-TRAIN-004:** The training workspace must split the exported snapshot locally using a shuffled 80/20 train/evaluation split with random seed `42`. Metrics must be calculated from predictions on the held-out evaluation partition rather than rows used to fit the evaluated model. The exact record membership must be saved with the training artifacts; split membership is not business data and must not be written to the central dataset tables.
 - **REQ-TRAIN-005:** Evaluation must report the following regression metrics:
   - mean absolute error (MAE), expressed in USD;
@@ -87,7 +92,12 @@ The PDF requires a trained regression model and performance metrics but does not
 
 The source PDF does not define units, currency, record roles, or validation ranges. None of the `REQ-DATA-*` requirements is PDF-mandated: `REQ-DATA-001` through `REQ-DATA-003`, `REQ-DATA-006`, and `REQ-DATA-007` contain **Data assumptions** inferred from the supplied files, while `REQ-DATA-004` and `REQ-DATA-005` are **Project decisions** defining safe and consistent validation. Database-loading details within this section are also project decisions.
 
-- **REQ-DATA-001:** `House Price Dataset.csv` is the labelled seed source for the versioned central housing dataset used by training and market analysis. Database initialization SQL must preload its 50 rows as the initial immutable dataset version. Its `id` column is a source-record identifier, its `price` column is the training target, and the remaining seven columns are model inputs. Neither `id` nor `price` is a prediction-request field.
+- **REQ-DATA-001:** `House Price Dataset.csv` is the labelled seed source for the mutable business
+  housing store. Database initialization SQL must load its 50 rows into that store and freeze the
+  same state as the initial immutable training dataset. Market analysis always reads current
+  business rows; model training reads only frozen datasets. The file's `id` column is a
+  source-record identifier, `price` is the training target, and the remaining seven columns are
+  model inputs. Neither `id` nor `price` is a prediction-request field.
 - **REQ-DATA-002:** `Test Data For Prediction.csv` is an unlabelled Web/API demonstration fixture containing exactly the seven model inputs. It must not be preloaded into the central dataset, used as training or evaluation data, or treated as actual-price market data. When its rows are submitted through the estimator, successful predictions follow the same history-persistence rules as other user inputs.
 - **REQ-DATA-003:** Feature meanings and units are:
   - `square_footage`: interior floor area in square feet (sq. ft.);
@@ -121,15 +131,15 @@ The source PDF does not define units, currency, record roles, or validation rang
 
 `REQ-MARKET-001`, `REQ-MARKET-002`, and `REQ-MARKET-004` through `REQ-MARKET-008` are **PDF** requirements. `REQ-MARKET-003` is **Mixed**: segment filtering is required by the PDF, while the complete list of filterable fields is a project decision. `REQ-MARKET-009` through `REQ-MARKET-011` are **Project decisions** that make filtering behavior deterministic.
 
-- **REQ-MARKET-001:** Users must be able to explore the supplied housing dataset through an interactive dashboard.
+- **REQ-MARKET-001:** Users must be able to explore the current mutable housing business data through an interactive dashboard.
 - **REQ-MARKET-002:** The dashboard must include property market visualisations.
 - **REQ-MARKET-003:** Users must be able to define a property segment by filtering on actual price, square footage, bedroom count, bathroom count, year built, lot size, distance to the city centre, and school rating.
 - **REQ-MARKET-004:** Users must be able to change property inputs in a what-if analysis and see the resulting model estimate.
 - **REQ-MARKET-005:** Users must be able to export analysis data as CSV.
 - **REQ-MARKET-006:** Users must be able to export analysis results as PDF.
 - **REQ-MARKET-007:** Market data tables must support sorting and filtering.
-- **REQ-MARKET-008:** The application must provide aggregate statistics derived from the supplied housing dataset.
-- **REQ-MARKET-009:** The default market view must apply no filters and include every source record.
+- **REQ-MARKET-008:** The application must provide aggregate statistics derived from current business rows.
+- **REQ-MARKET-009:** The default market view must apply no filters and include every current business record.
 - **REQ-MARKET-010:** The active filters must define one consistent record set used by the aggregate statistics, charts, data table, and exports.
 - **REQ-MARKET-011:** Users must be able to reset all market filters to the default view.
 

@@ -3,7 +3,6 @@ package com.hsbc.market.model.v1;
 import com.hsbc.market.exception.MarketException;
 import com.hsbc.market.model.domain.MarketDomain;
 import java.math.BigDecimal;
-import java.util.UUID;
 
 /** Binds legacy flat query parameters into the current market selection model. */
 public final class V1QueryParameters {
@@ -27,7 +26,6 @@ public final class V1QueryParameters {
   private String direction = "asc";
   private int page;
   private int size = 20;
-  private UUID datasetVersionId;
 
   public MarketDomain.Selection selection() {
     if (page < 0 || size < 1 || size > 100) {
@@ -35,7 +33,6 @@ public final class V1QueryParameters {
           "VALIDATION_ERROR", "page or size is outside the supported range");
     }
     return new MarketDomain.Selection(
-        datasetVersionId,
         new MarketDomain.Filters(
             MarketDomain.Range.of(priceMin, priceMax),
             MarketDomain.Range.of(squareFootageMin, squareFootageMax),
@@ -209,13 +206,5 @@ public final class V1QueryParameters {
 
   public void setSize(int value) {
     size = value;
-  }
-
-  public UUID getDatasetVersionId() {
-    return datasetVersionId;
-  }
-
-  public void setDatasetVersionId(UUID value) {
-    datasetVersionId = value;
   }
 }

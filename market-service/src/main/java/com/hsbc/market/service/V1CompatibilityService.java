@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Preserves the legacy v1 dashboard and export behavior over v2 domain services. */
@@ -44,6 +45,11 @@ public class V1CompatibilityService {
   }
 
   /** Builds the legacy market analysis response from stable v2 queries. */
+  @Transactional(
+      transactionManager = "queryTransactionManager",
+      readOnly = true,
+      isolation = Isolation.REPEATABLE_READ,
+      timeout = 3)
   public V1Models.MarketAnalysis analysis(V1QueryParameters parameters) {
     MarketDomain.Selection selection = parameters.selection();
     MarketDomain.PropertyPage current = null;
@@ -76,18 +82,11 @@ public class V1CompatibilityService {
                 MarketDomain.MetricField.SQUARE_FOOTAGE));
     MarketDomain.StatisticsResult summary =
         statisticsService.query(
-            new MarketDomain.StatisticsCommand(
-                selection.requestedDatasetVersionId(),
-                selection.filters(),
-                metrics,
-                null,
-                null,
-                1));
+            new MarketDomain.StatisticsCommand(selection.filters(), metrics, null, null, 1));
     Map<String, BigDecimal> values = summary.groups().getFirst().values();
     MarketDomain.StatisticsResult bedrooms =
         statisticsService.query(
             new MarketDomain.StatisticsCommand(
-                selection.requestedDatasetVersionId(),
                 selection.filters(),
                 List.of(
                     new MarketDomain.Metric(
@@ -108,8 +107,7 @@ public class V1CompatibilityService {
             .toList());
     charts.put("property_count_by_school_band", schoolBands(selection));
     return new V1Models.MarketAnalysis(
-        current.datasetVersion().id(),
-        current.datasetVersion().contentSha256(),
+        current.dataRevision(),
         values.get("count").longValue(),
         parameters.getPage(),
         parameters.getSize(),
@@ -138,7 +136,11 @@ public class V1CompatibilityService {
   }
 
   /** Streams a legacy CSV response for the requested filters. */
-  @Transactional(transactionManager = "queryTransactionManager", readOnly = true, timeout = 120)
+  @Transactional(
+      transactionManager = "queryTransactionManager",
+      readOnly = true,
+      isolation = Isolation.REPEATABLE_READ,
+      timeout = 120)
   public void writeCsv(V1QueryParameters parameters, OutputStream output) {
     try {
       MarketDomain.ResolvedSelection resolved = marketQueryService.resolve(parameters.selection());
@@ -181,7 +183,11 @@ public class V1CompatibilityService {
   }
 
   /** Streams a legacy PDF report with an optional prediction. */
-  @Transactional(transactionManager = "queryTransactionManager", readOnly = true, timeout = 120)
+  @Transactional(
+      transactionManager = "queryTransactionManager",
+      readOnly = true,
+      isolation = Isolation.REPEATABLE_READ,
+      timeout = 120)
   public void writePdf(
       V1QueryParameters parameters, V1Models.WhatIfResponse prediction, OutputStream output) {
     try {
@@ -193,7 +199,7 @@ public class V1CompatibilityService {
       document.add(
           new Paragraph(
               "Property Market Analysis", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18)));
-      document.add(new Paragraph("Dataset: " + resolved.datasetVersion().id()));
+      document.add(new Paragraph("Business data revision: " + resolved.dataRevision()));
       document.add(new Paragraph("Matching records: " + count));
       if (prediction != null && prediction.prediction() != null) {
         document.add(
@@ -261,7 +267,6 @@ public class V1CompatibilityService {
     MarketDomain.StatisticsResult result =
         statisticsService.query(
             new MarketDomain.StatisticsCommand(
-                selection.requestedDatasetVersionId(),
                 narrowed,
                 List.of(
                     new MarketDomain.Metric(

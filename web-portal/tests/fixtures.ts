@@ -38,7 +38,7 @@ export const whatIfResponse: WhatIfResponse = {
 };
 
 export const marketPageModel: MarketPageModel = {
-  datasetVersion: { id: "00000000-0000-4000-8000-000000000001", contentSha256: "a".repeat(64) },
+  dataRevision: 1,
   queryFingerprint: `sha256:${"b".repeat(64)}`,
   records: [
     {
@@ -66,6 +66,6 @@ export const marketPageModel: MarketPageModel = {
     averagePriceByBedrooms: [{ label: "3", value: 250000, rawValue: "250000.00" }],
     propertyCountBySchoolBand: [{ label: "8–10", value: 2, rawValue: "2" }],
   },
-  query: { sort: "source_id:asc", limit: 20, dataset_version_id: "00000000-0000-4000-8000-000000000001" },
+  query: { sort: "source_id:asc", limit: 20 },
   warning: null,
 };

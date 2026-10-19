@@ -119,7 +119,7 @@ The result panel reserves space before a prediction exists. This prevents a larg
 | M6 | What-if analysis | Accept all seven model fields and show predicted price, model version, and advisory warnings. What-if state is independent of the dashboard read state. |
 | M7 | Market context for what-if | Compare the predicted value with the filtered segment's average, minimum, and maximum price. Label the comparison as context, not valuation confidence. |
 | M8 | Export centre | Create CSV or PDF jobs, show live job status, cancel eligible jobs, download completed files, and regenerate expired files. The dashboard remains usable while an export runs. |
-| M9 | Dataset identity | Show a short dataset version in a details area and pin table, statistics, charts, and exports to that version. Display the content hash and query fingerprint only in technical details. |
+| M9 | Live-data identity | Show the business data revision in technical details and ensure table, statistics, charts, and exports are revision-consistent. Display the query fingerprint only in technical details. |
 | M10 | Guided insight view | Let the user choose one approved grouping dimension and one approved metric for an additional chart. Options come from the OpenAPI allow-list; high-cardinality dimensions require fixed-width buckets. |
 
 M4, M7, M9, and M10 extend the required dashboard without exceeding the v2 contract. They do not introduce free-form queries or client-side full-dataset calculations.
@@ -128,7 +128,10 @@ M4, M7, M9, and M10 extend the required dashboard without exceeding the v2 contr
 
 #### Dataset consistency
 
-The first property request may omit `dataset_version_id`, allowing the service to resolve the active immutable dataset. The frontend then pins every statistics, pagination, what-if-context, and export request to the returned dataset version. Filter and sort changes keep the same version until the user explicitly refreshes the dataset or a version conflict requires recovery.
+Market requests never send a dataset ID. Each properties/statistics response returns a server-owned
+`data_revision`. The server loader fetches the table and chart/statistics calls in parallel and
+accepts the assembled page only when all revisions match; otherwise it retries. Cursors bind to the
+revision that created them, while filter and sort changes clear cursor state.
 
 #### Decimal values
 
@@ -136,11 +139,17 @@ Money and decimal response fields remain strings in the transport and domain lay
 
 #### Sorting and pagination
 
-The table supports one sort expression from the API allow-list. Changing filter, sort, limit, or dataset version clears the cursor. Cursors are opaque and must not be parsed or edited. Back navigation uses browser history or a small stack of previously received cursors.
+The table supports one sort expression from the API allow-list. Changing filter, sort, or limit
+clears the cursor. Cursors are opaque, include a server-verified business revision, and must not be
+parsed or edited. Back navigation uses browser history or a small stack of previously received
+cursors.
 
 #### Statistics
 
-The overview sends several metrics in one statistics request. Charts use separate grouped requests after the dataset version is known. The frontend honours the limits of 20 metrics and 200 groups. When an aggregate is null, the UI displays an em dash; COUNT still displays zero.
+The overview sends several metrics in one statistics request. Charts use separate grouped requests
+and the server loader compares every returned revision. The frontend honours the limits of 20
+metrics and 200 groups. When an aggregate is null, the UI displays an em dash; COUNT still displays
+zero.
 
 #### Exports
 
@@ -150,7 +159,7 @@ Export creation returns `202 Accepted`, not a file. The client uses `Location` a
 
 The desktop dashboard uses this order:
 
-1. page title, dataset details, and export action;
+1. page title, live-data revision details, and export action;
 2. compact metric cards;
 3. filter panel and active-filter summary;
 4. two primary charts;
@@ -165,7 +174,7 @@ On mobile, this becomes one column. Filters use an accessible disclosure. What-i
 | Scenario | Observable result |
 | --- | --- |
 | The user opens `/market` | Initial properties and core market data are loaded by Server Components. The page shows a route-level skeleton while critical data is pending. |
-| The first property response resolves a dataset | Statistics, charts, later pages, and exports use that exact dataset version. The user never sees a dashboard assembled from mixed versions. |
+| Parallel market responses have one revision | Render the page only when table, statistics, and charts share that exact business revision. |
 | The user edits filters | No request is sent for each keystroke. Apply commits valid filters to the URL. Reset removes them. |
 | The user applies filters | The existing dashboard remains readable but is marked updating. The cursor resets, then cards, charts, and the table update to the same scope. |
 | A minimum is greater than its maximum | Client validation blocks Apply and identifies the range. A backend 422 maps to the same controls. |
@@ -179,7 +188,7 @@ On mobile, this becomes one column. Filters use an accessible disclosure. What-i
 | The user cancels an export | The item enters a cancellation state, disables duplicate cancellation, and ends as Cancelled or the server-reported terminal state. |
 | Export content has expired | The item shows Expired and offers Regenerate. It does not repeatedly request the expired content URL. |
 | The API returns 429 | The relevant control shows the rate-limit message and a Retry-After countdown. Automatic retries stop during that period. |
-| The API returns a dataset/query conflict | The page discards stale cursor or selection state, preserves valid filters, resolves a consistent dataset, and tells the user what changed. |
+| The API returns a stale-revision/query conflict | The page discards stale cursor state, preserves valid filters, reloads current business data, and tells the user what changed. |
 
 ## 6. Shared UX and design system
 
@@ -278,7 +287,7 @@ A Client Component boundary should be placed around the smallest interactive are
 
 `/market/page.tsx` performs a two-stage server load:
 
-1. request the first property page to resolve the immutable dataset version;
+1. request the first property page and statistics/chart data for the current business revision;
 2. request overview and grouped statistics in parallel, pinned to that version.
 
 The table can render as soon as the property page is available. Independent chart sections may stream behind `Suspense` after the version is known. The browser must not repeat these initial requests in `useEffect`.
@@ -290,9 +299,9 @@ Server Components call server-only data-access functions directly for the first 
 | Data | Policy |
 | --- | --- |
 | Visitor-specific estimate history | `no-store`; private data must not be shared across visitors |
-| First market request without a dataset version | `no-store`; the active version may change |
+| Market business requests | `no-store`; mutable business data may change |
 | Dataset-pinned market reads | Initial RSC read or subsequent same-origin client read; request-scoped memoisation only, with persistent portal caching allowed only if its key space and invalidation policy are measured and bounded |
-| Statistics | Batch metrics where possible; parallelise independent grouped requests after dataset pinning |
+| Statistics | Batch metrics where possible; parallelise independent grouped requests and verify matching revisions |
 | What-if and estimate creation | Explicit user mutation; no cache |
 | Export job status | Poll according to `Retry-After`; no cache |
 | Export content | Stream through the BFF while preserving content type, disposition, length, digest, and ETag headers |
@@ -360,7 +369,7 @@ The portal does not need a global state library. URL state, Server Component dat
 
 | State | Owner |
 | --- | --- |
-| Committed market filters, sort, limit, cursor, dataset version | URL search parameters |
+| Committed market filters, sort, limit, cursor | URL search parameters |
 | Draft form and filter values | Local controlled form state |
 | Initial history and market data | Server Component page model |
 | Post-hydration market records, aggregates, charts, and committed query | Market smart-container state, refreshed through the same-origin BFF |
@@ -554,7 +563,7 @@ feature components -> shared UI, hooks, motion, validation, formatting
 | Contract | Generated App 2 types, BFF headers, decimal strings, error envelope, export status, and streaming headers |
 | Unit | Validation schemas, reducers, URL-to-query mapping, statistics presets, decimal formatting, and shared hooks |
 | Component | Dummy components in loading, empty, error, and success states; keyboard and ARIA behaviour |
-| Integration | RSC data loading, dataset pinning, partial market failures, and BFF forwarding |
+| Integration | RSC data loading, revision consistency/retry, partial market failures, and BFF forwarding |
 | E2E | Both App 1 and App 2 user journeys across desktop and mobile viewports |
 | Accessibility | axe checks plus manual keyboard, screen-reader copy, reduced-motion, and 200% zoom checks |
 
@@ -563,7 +572,7 @@ feature components -> shared UI, hooks, motion, validation, formatting
 1. Estimator initial history is present in the server-rendered result with no duplicate initial browser fetch.
 2. Invalid estimator input is blocked and fully described; valid input produces matching table and chart output.
 3. History selection creates a two-to-four property comparison without another prediction call.
-4. Market properties, statistics, charts, and exports use the same dataset version.
+4. Market properties, statistics, charts, and exports are bound to one live business revision.
 5. Filter and sort changes reset the cursor and update the URL.
 6. Next/Back cursor navigation has no duplicated or missing records.
 7. Global metrics and charts are never calculated from the current property page.
@@ -605,7 +614,7 @@ feature components -> shared UI, hooks, motion, validation, formatting
 The frontend is complete when:
 
 - every App 1 and App 2 function in the PDF is available and passes the black-box behaviour in sections 4.4 and 5.5;
-- the App 2 UI obeys v2 dataset, decimal, filter, sort, cursor, statistics, what-if, and export constraints;
+- the App 2 UI obeys v2 revision, decimal, filter, sort, cursor, statistics, what-if, and export constraints;
 - initial business data is loaded by Server Components, with Client Components limited to interactive islands;
 - smart containers own orchestration and dummy components remain transport- and router-independent;
 - shared hooks contain only cross-feature browser behaviour;

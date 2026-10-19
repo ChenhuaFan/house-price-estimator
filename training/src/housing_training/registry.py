@@ -137,6 +137,15 @@ class Registry:
             raise ValueError(f"training run {run_id} was not found")
         return dict(row)
 
+    def snapshot_business_dataset(self, version_name: str, *, activate: bool = True) -> UUID:
+        """Freeze the current mutable business store into one immutable dataset version."""
+        with psycopg.connect(self.database_url) as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT catalog.snapshot_business_data(%s, %s)",
+                (version_name, activate),
+            )
+            return UUID(str(_scalar(cursor.fetchone(), "snapshot_business_data")))
+
     def dataset(self, dataset_version_id: UUID) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         with psycopg.connect(self.database_url, row_factory=dict_row) as connection:
             connection.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
@@ -150,7 +159,7 @@ class Registry:
                 """
                 SELECT source_id, square_footage, bedrooms, bathrooms, year_built,
                        lot_size, distance_to_city_center, school_rating, price
-                  FROM catalog.housing_records
+                  FROM catalog.dataset_records
                  WHERE dataset_version_id = %s
                  ORDER BY source_id
                 """,

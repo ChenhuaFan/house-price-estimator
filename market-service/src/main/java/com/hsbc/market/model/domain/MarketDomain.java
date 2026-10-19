@@ -5,13 +5,10 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /** Namespace for immutable market selections, records, aggregates, and predictions. */
 public final class MarketDomain {
   private MarketDomain() {}
-
-  public record DatasetVersion(UUID id, String contentSha256) {}
 
   public record Range<T extends Comparable<? super T>>(T gte, T lte) {
     public Range {
@@ -97,7 +94,7 @@ public final class MarketDomain {
     }
   }
 
-  public record Selection(UUID requestedDatasetVersionId, Filters filters, Sort sort) {
+  public record Selection(Filters filters, Sort sort) {
     public Selection {
       filters = filters == null ? Filters.empty() : filters;
       sort = sort == null ? new Sort(SortField.SOURCE_ID, SortDirection.ASC) : sort;
@@ -105,7 +102,7 @@ public final class MarketDomain {
   }
 
   public record ResolvedSelection(
-      DatasetVersion datasetVersion, Filters filters, Sort sort, String queryFingerprint) {}
+      long dataRevision, Filters filters, Sort sort, String queryFingerprint) {}
 
   public record PropertyRecord(
       long sourceId,
@@ -139,7 +136,7 @@ public final class MarketDomain {
   public record CursorPosition(String sortValue, long sourceId) {}
 
   public record PropertyPage(
-      DatasetVersion datasetVersion,
+      long dataRevision,
       String queryFingerprint,
       List<PropertyRecord> items,
       int limit,
@@ -196,12 +193,7 @@ public final class MarketDomain {
   public record GroupOrder(String by, SortDirection direction) {}
 
   public record StatisticsCommand(
-      UUID requestedDatasetVersionId,
-      Filters filters,
-      List<Metric> metrics,
-      GroupBy groupBy,
-      GroupOrder order,
-      int limit) {}
+      Filters filters, List<Metric> metrics, GroupBy groupBy, GroupOrder order, int limit) {}
 
   public record StatisticsGroupKey(
       GroupField field, BigDecimal exactValue, BigDecimal gte, BigDecimal lt, String label) {
@@ -213,7 +205,7 @@ public final class MarketDomain {
   public record StatisticsGroup(StatisticsGroupKey key, Map<String, BigDecimal> values) {}
 
   public record StatisticsResult(
-      DatasetVersion datasetVersion, String queryFingerprint, List<StatisticsGroup> groups) {}
+      long dataRevision, String queryFingerprint, List<StatisticsGroup> groups) {}
 
   public record PropertyFeatures(
       long squareFootage,

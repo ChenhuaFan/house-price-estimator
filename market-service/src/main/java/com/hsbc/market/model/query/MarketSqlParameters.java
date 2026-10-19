@@ -3,11 +3,9 @@ package com.hsbc.market.model.query;
 import com.hsbc.market.model.domain.MarketDomain.Filters;
 import com.hsbc.market.model.domain.MarketDomain.ResolvedSelection;
 import java.math.BigDecimal;
-import java.util.UUID;
 
 /** Flattens a resolved market scope into allow-listed Mapper XML parameters. */
 public record MarketSqlParameters(
-    UUID datasetVersionId,
     BigDecimal priceGte,
     BigDecimal priceLte,
     Long squareFootageGte,
@@ -29,7 +27,6 @@ public record MarketSqlParameters(
   public static MarketSqlParameters from(ResolvedSelection selection) {
     Filters f = selection.filters();
     return new MarketSqlParameters(
-        selection.datasetVersion().id(),
         gte(f.price()),
         lte(f.price()),
         gte(f.squareFootage()),

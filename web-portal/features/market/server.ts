@@ -1,4 +1,4 @@
-/** Server-only loader that assembles one dataset-consistent market page model. */
+/** Server-only loader that assembles one revision-consistent live market page model. */
 import type { MarketPageModel } from "@/lib/api/types";
 import { fetchJson } from "@/lib/server/request";
 import {
@@ -36,60 +36,61 @@ async function statistics(body: StatisticsQueryWire): Promise<StatisticsResponse
   });
 }
 
-/** Loads properties first, then pins all parallel aggregates to that dataset version. */
+/** Loads live properties and aggregates, retrying if a concurrent write splits revisions. */
 export async function getMarketPageModel(searchParams: SearchParams): Promise<MarketPageModel> {
   const query = parseMarketQuery(searchParams);
-  const propertyUrl = new URL(
-    "/api/v2/market/properties",
-    process.env.MARKET_SERVICE_URL ?? "http://localhost:8080",
-  );
-  propertyUrl.search = queryToSearchParams(query).toString();
-  const propertyPage = await fetchJson<PropertyPageWire>(propertyUrl, {
-    headers: { "X-Correlation-ID": crypto.randomUUID() },
-  });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const propertyUrl = new URL(
+      "/api/v2/market/properties",
+      process.env.MARKET_SERVICE_URL ?? "http://localhost:8080",
+    );
+    propertyUrl.search = queryToSearchParams(query).toString();
+    const propertyPage = await fetchJson<PropertyPageWire>(propertyUrl, {
+      headers: { "X-Correlation-ID": crypto.randomUUID() },
+    });
+    const scope = { filters: queryToFilters(query) };
+    const [overview, bedrooms, schoolBands] = await Promise.all([
+      statistics({ scope, metrics: overviewMetrics, limit: 1 }),
+      statistics({
+        scope,
+        metrics: [{ id: "average_price", method: "AVG", field: "price" }],
+        group_by: { field: "bedrooms" },
+        order: { by: "group_key", direction: "asc" },
+        limit: 20,
+      }),
+      statistics({
+        scope,
+        metrics: [{ id: "property_count", method: "COUNT", field: "*" }],
+        group_by: { field: "school_rating", bucket: { method: "FIXED_WIDTH", width: "2" } },
+        order: { by: "group_key", direction: "asc" },
+        limit: 20,
+      }),
+    ]);
+    const revisions = [
+      propertyPage.data_revision,
+      overview.data_revision,
+      bedrooms.data_revision,
+      schoolBands.data_revision,
+    ];
+    if (!revisions.every((revision) => revision === propertyPage.data_revision)) continue;
 
-  // Statistics must use the version resolved by the property request to avoid mixed snapshots.
-  const pinnedQuery = { ...query, dataset_version_id: propertyPage.dataset_version.id };
-  const scope = {
-    dataset_version_id: propertyPage.dataset_version.id,
-    filters: queryToFilters(pinnedQuery),
-  };
-  const [overview, bedrooms, schoolBands] = await Promise.all([
-    statistics({ scope, metrics: overviewMetrics, limit: 1 }),
-    statistics({
-      scope,
-      metrics: [{ id: "average_price", method: "AVG", field: "price" }],
-      group_by: { field: "bedrooms" },
-      order: { by: "group_key", direction: "asc" },
-      limit: 20,
-    }),
-    statistics({
-      scope,
-      metrics: [{ id: "property_count", method: "COUNT", field: "*" }],
-      group_by: { field: "school_rating", bucket: { method: "FIXED_WIDTH", width: "2" } },
-      order: { by: "group_key", direction: "asc" },
-      limit: 20,
-    }),
-  ]);
-
-  return {
-    datasetVersion: {
-      id: propertyPage.dataset_version.id,
-      contentSha256: propertyPage.dataset_version.content_sha256,
-    },
-    queryFingerprint: propertyPage.query_fingerprint,
-    records: mapPropertyPage(propertyPage),
-    page: {
-      limit: propertyPage.page.limit,
-      hasMore: propertyPage.page.has_more,
-      nextCursor: propertyPage.page.next_cursor ?? null,
-    },
-    overview: mapOverview(overview),
-    charts: {
-      averagePriceByBedrooms: mapChart(bedrooms, "average_price"),
-      propertyCountBySchoolBand: mapChart(schoolBands, "property_count"),
-    },
-    query: pinnedQuery,
-    warning: null,
-  };
+    return {
+      dataRevision: propertyPage.data_revision,
+      queryFingerprint: propertyPage.query_fingerprint,
+      records: mapPropertyPage(propertyPage),
+      page: {
+        limit: propertyPage.page.limit,
+        hasMore: propertyPage.page.has_more,
+        nextCursor: propertyPage.page.next_cursor ?? null,
+      },
+      overview: mapOverview(overview),
+      charts: {
+        averagePriceByBedrooms: mapChart(bedrooms, "average_price"),
+        propertyCountBySchoolBand: mapChart(schoolBands, "property_count"),
+      },
+      query,
+      warning: null,
+    };
+  }
+  throw new Error("Business data changed repeatedly while assembling the market dashboard.");
 }

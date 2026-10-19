@@ -16,7 +16,7 @@ test.describe("Task 2 portal with contract-faithful mock backends", () => {
     await page.getByRole("link", { name: "Market analysis" }).first().click();
     await expect(page.getByRole("heading", { level: 1, name: "Market analysis" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("50 matching")).toBeVisible();
-    await expect(page.getByText(/version-pinned · initial load server-rendered/)).toBeVisible();
+    await expect(page.getByText(/Business data revision \d+ · initial load server-rendered/)).toBeVisible();
   });
 
   test("validates, estimates, reuses and compares without a page reload", async ({ page }) => {

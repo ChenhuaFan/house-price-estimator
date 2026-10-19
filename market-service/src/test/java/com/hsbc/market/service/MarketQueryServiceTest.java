@@ -15,8 +15,7 @@ import com.hsbc.market.model.domain.MarketDomain;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.cache.concurrent.ConcurrentMapCache;
@@ -24,7 +23,7 @@ import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.cache.support.NoOpCache;
 
 class MarketQueryServiceTest {
-  private static final UUID VERSION = UUID.fromString("00000000-0000-4000-8000-000000000001");
+  private static final long DATA_REVISION = 1;
   private final List<MarketDomain.PropertyRecord> rows =
       List.of(
           row(1, 100000, 1000), row(2, 200000, 1200), row(3, 200000, 1400), row(4, 300000, 1600));
@@ -36,8 +35,7 @@ class MarketQueryServiceTest {
   @BeforeEach
   void setUp() {
     marketReadDao = mock(MarketReadDao.class);
-    when(marketReadDao.resolveDatasetVersion(any()))
-        .thenReturn(new MarketDomain.DatasetVersion(VERSION, "a".repeat(64)));
+    when(marketReadDao.currentDataRevision()).thenReturn(DATA_REVISION);
     when(marketReadDao.listPage(any(), any(), anyInt()))
         .thenAnswer(
             invocation -> {
@@ -98,7 +96,6 @@ class MarketQueryServiceTest {
   void statisticsRejectDuplicateIdsAndInvalidMethodFieldPair() {
     MarketDomain.StatisticsCommand duplicate =
         new MarketDomain.StatisticsCommand(
-            VERSION,
             MarketDomain.Filters.empty(),
             List.of(
                 new MarketDomain.Metric(
@@ -110,7 +107,6 @@ class MarketQueryServiceTest {
             10);
     MarketDomain.StatisticsCommand invalid =
         new MarketDomain.StatisticsCommand(
-            VERSION,
             MarketDomain.Filters.empty(),
             List.of(
                 new MarketDomain.Metric(
@@ -149,13 +145,13 @@ class MarketQueryServiceTest {
 
     assertThat(
             QueryFingerprint.selection(
-                "a".repeat(64),
+                DATA_REVISION,
                 left,
                 new MarketDomain.Sort(
                     MarketDomain.SortField.PRICE, MarketDomain.SortDirection.ASC)))
         .isEqualTo(
             QueryFingerprint.selection(
-                "a".repeat(64),
+                DATA_REVISION,
                 right,
                 new MarketDomain.Sort(
                     MarketDomain.SortField.PRICE, MarketDomain.SortDirection.ASC)));
@@ -170,7 +166,6 @@ class MarketQueryServiceTest {
 
     MarketDomain.StatisticsCommand command =
         new MarketDomain.StatisticsCommand(
-            VERSION,
             MarketDomain.Filters.empty(),
             List.of(
                 new MarketDomain.Metric(
@@ -183,7 +178,7 @@ class MarketQueryServiceTest {
             invocation -> {
               MarketDomain.ResolvedSelection resolved = invocation.getArgument(0);
               return new MarketDomain.StatisticsResult(
-                  resolved.datasetVersion(), resolved.queryFingerprint(), List.of());
+                  resolved.dataRevision(), resolved.queryFingerprint(), List.of());
             });
     statisticsService.query(command);
     statisticsService.query(command);
@@ -192,9 +187,8 @@ class MarketQueryServiceTest {
 
   @Test
   void cacheKeysSeparateEveryQueryDimensionAndRestartOrDisablePreservesResults() {
-    AtomicReference<MarketDomain.DatasetVersion> activeVersion =
-        new AtomicReference<>(new MarketDomain.DatasetVersion(VERSION, "a".repeat(64)));
-    when(marketReadDao.resolveDatasetVersion(any())).thenAnswer(ignored -> activeVersion.get());
+    AtomicLong dataRevision = new AtomicLong(DATA_REVISION);
+    when(marketReadDao.currentDataRevision()).thenAnswer(ignored -> dataRevision.get());
     var sharedCache = new ConcurrentMapCache("firstPage");
     MarketQueryService cached = service(sharedCache);
     MarketDomain.Selection base = selection(MarketDomain.SortField.PRICE);
@@ -214,7 +208,6 @@ class MarketQueryServiceTest {
             null);
     cached.list(
         new MarketDomain.Selection(
-            VERSION,
             filtered,
             new MarketDomain.Sort(MarketDomain.SortField.PRICE, MarketDomain.SortDirection.ASC)),
         2,
@@ -222,10 +215,9 @@ class MarketQueryServiceTest {
     cached.list(selection(MarketDomain.SortField.SQUARE_FOOTAGE), 2, null);
     cached.list(base, 3, null);
 
-    UUID activatedId = UUID.fromString("00000000-0000-4000-8000-000000000002");
-    activeVersion.set(new MarketDomain.DatasetVersion(activatedId, "b".repeat(64)));
+    dataRevision.set(2);
     MarketDomain.PropertyPage activated = cached.list(base, 2, null);
-    assertThat(activated.datasetVersion()).isEqualTo(activeVersion.get());
+    assertThat(activated.dataRevision()).isEqualTo(2);
     assertThat(activated.items()).isEqualTo(baseline.items());
     verify(marketReadDao, times(5)).listPage(any(), any(), anyInt());
 
@@ -315,14 +307,12 @@ class MarketQueryServiceTest {
       MarketDomain.GroupOrder order,
       int limit) {
     return new MarketDomain.StatisticsCommand(
-        VERSION, MarketDomain.Filters.empty(), metrics, group, order, limit);
+        MarketDomain.Filters.empty(), metrics, group, order, limit);
   }
 
   private static MarketDomain.Selection selection(MarketDomain.SortField field) {
     return new MarketDomain.Selection(
-        VERSION,
-        MarketDomain.Filters.empty(),
-        new MarketDomain.Sort(field, MarketDomain.SortDirection.ASC));
+        MarketDomain.Filters.empty(), new MarketDomain.Sort(field, MarketDomain.SortDirection.ASC));
   }
 
   private MarketQueryService service(org.springframework.cache.Cache cache) {

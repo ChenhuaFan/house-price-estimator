@@ -287,7 +287,7 @@ Release E2E testing is complete when:
 - there are no unresolved serious/critical accessibility violations;
 - the PDF export has been programmatically inspected and visually rendered;
 - the clean demonstration case passes from repository instructions; and
-- the test report retains browser/version data, Git commit, Compose image identifiers, active dataset/model versions, results, traces for failures, and links to defects.
+- the test report retains browser/version data, Git commit, Compose image identifiers, business data revision, active model and its frozen dataset lineage, results, traces for failures, and links to defects.
 
 The full `REQ-*` mapping and PDF-clause mapping are maintained in [`integration-test-plan.md`](integration-test-plan.md) so that coverage is reviewed in one authoritative matrix.
 

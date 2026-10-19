@@ -59,7 +59,7 @@ export function MarketDashboardView(props: Props): React.ReactElement {
         <div className="flex min-h-14 flex-col gap-3 sm:flex-row sm:items-center">
           <div className="inline-flex min-h-14 flex-1 items-center gap-3 rounded-xl border border-border-ui bg-white px-4 py-2 shadow-panel">
             <Database className="size-5 text-ink" aria-hidden="true" />
-            <div className="min-w-0"><p className="font-bold text-ink">Housing dataset · {formatNumber(props.model.overview.count)} matching</p><p className="truncate text-xs text-ink-muted">Version {props.model.datasetVersion.id.slice(0, 8)} · version-pinned · initial load server-rendered · price σ {nullableMoney(props.model.overview.priceStandardDeviation)}</p></div>
+            <div className="min-w-0"><p className="font-bold text-ink">Live property market · {formatNumber(props.model.overview.count)} matching</p><p className="truncate text-xs text-ink-muted">Business data revision {props.model.dataRevision} · initial load server-rendered · price σ {nullableMoney(props.model.overview.priceStandardDeviation)}</p></div>
           </div>
           <div className={`inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-bold transition-opacity ${props.navigating ? "bg-blue-soft text-blue opacity-100" : "pointer-events-none opacity-0"}`} role={props.navigating ? "status" : undefined} aria-live={props.navigating ? "polite" : undefined} aria-hidden={!props.navigating}><span className="size-2 animate-pulse rounded-full bg-blue" />Updating dashboard…</div>
         </div>
@@ -82,7 +82,7 @@ export function MarketDashboardView(props: Props): React.ReactElement {
         <MarketCharts priceByBedrooms={props.model.charts.averagePriceByBedrooms} countBySchoolBand={props.model.charts.propertyCountBySchoolBand} />
         <MarketTable model={props.model} disabled={props.navigating} onSort={props.onSort} onNext={props.onNext} onBack={props.onBack} />
         <ExportCentre jobs={props.exports} creatingFormat={props.creatingFormat} onCreate={props.onExport} onCancel={props.onCancelExport} onDismiss={props.onDismissExport} />
-        <details className="break-all rounded-lg px-1 text-xs text-ink-muted"><summary className="min-h-11 cursor-pointer py-3 font-bold">Technical dataset details</summary><p>Version {props.model.datasetVersion.id}</p><p>Content SHA-256 {props.model.datasetVersion.contentSha256}</p><p>Query {props.model.queryFingerprint}</p></details>
+        <details className="break-all rounded-lg px-1 text-xs text-ink-muted"><summary className="min-h-11 cursor-pointer py-3 font-bold">Technical query details</summary><p>Business data revision {props.model.dataRevision}</p><p>Query {props.model.queryFingerprint}</p></details>
       </div>
       <aside className="min-w-0 xl:sticky xl:top-5 xl:self-start">
         <WhatIfForm marketOverview={props.model.overview} onResult={props.onWhatIfResult} />

@@ -10,10 +10,11 @@ Housing Intelligence Portal implements the two assignments in
 - a Next.js portal containing a durable Property Value Estimator and a Spring Boot Property Market
   Analysis application.
 
-The market application provides version-pinned property queries, statistics, charts, filters,
-stable cursor pagination, model-backed what-if estimates, and asynchronous CSV/PDF downloads. The
-entire stack runs with Docker Compose; only the portal and public model API are exposed on the host
-by default.
+The market application queries the live business dataset and provides statistics, charts, filters,
+revision-bound cursor pagination, model-backed what-if estimates, and asynchronous CSV/PDF
+downloads. Training freezes immutable dataset versions from that live store for reproducible model
+lineage. The entire stack runs with Docker Compose; the portal, model API, and Java Swagger UI are
+published to loopback by default.
 
 ## Current Screenshots
 
@@ -117,6 +118,7 @@ Open:
 - Property Value Estimator: <http://127.0.0.1:3000/estimator>
 - Property Market Analysis: <http://127.0.0.1:3000/market>
 - model API Swagger UI: <http://127.0.0.1:8000/docs>
+- Java market API Swagger UI: <http://127.0.0.1:8080/swagger-ui/index.html>
 
 Stop the stack without deleting its named volumes:
 
@@ -144,8 +146,8 @@ flowchart LR
 The portal is the browser-facing boundary and proxies requests to private application services. The
 estimator owns idempotent estimates and anonymous history. The market service owns property queries,
 statistics, signed cursors, what-if orchestration, and durable export jobs. The model service owns
-validated inference and active-model metadata. PostgreSQL stores versioned source data, model
-registry state, estimate history, and export job state.
+validated inference and active-model metadata. PostgreSQL stores the mutable business records,
+immutable training datasets, model registry state, estimate history, and export job state.
 
 The Java service is one Maven/Spring Boot application with a strict internal dependency flow:
 

@@ -71,10 +71,7 @@ export interface MarketOverview {
 }
 
 export interface MarketPageModel {
-  datasetVersion: {
-    id: string;
-    contentSha256: string;
-  };
+  dataRevision: number;
   queryFingerprint: string;
   records: PropertyRecord[];
   page: {
@@ -111,7 +108,6 @@ export interface MarketQueryState {
   sort: string;
   limit: number;
   cursor?: string;
-  dataset_version_id?: string;
 }
 
 export interface Prediction {
@@ -141,6 +137,7 @@ export interface ExportJob {
   export_id: string;
   status: ExportStatus;
   format: ExportFormat;
+  data_revision: number;
   query_fingerprint: string;
   created_at: string;
   started_at?: string;

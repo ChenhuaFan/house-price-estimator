@@ -1,7 +1,6 @@
 package com.hsbc.market.controller;
 
 import com.hsbc.market.contract.model.AdvisoryWarning;
-import com.hsbc.market.contract.model.DatasetVersion;
 import com.hsbc.market.contract.model.ExportCreateRequest;
 import com.hsbc.market.contract.model.ExportFormat;
 import com.hsbc.market.contract.model.ExportJob;
@@ -32,7 +31,6 @@ import org.springframework.stereotype.Component;
 public final class ApiModelMapper {
   /** Builds a normalized domain selection from property-list query parameters. */
   public MarketDomain.Selection propertySelection(
-      UUID datasetVersionId,
       String priceGte,
       String priceLte,
       Long squareFootageGte,
@@ -51,7 +49,6 @@ public final class ApiModelMapper {
       String schoolRatingLte,
       String sort) {
     return new MarketDomain.Selection(
-        datasetVersionId,
         new MarketDomain.Filters(
             MarketDomain.Range.of(decimal(priceGte), decimal(priceLte)),
             MarketDomain.Range.of(squareFootageGte, squareFootageLte),
@@ -69,7 +66,6 @@ public final class ApiModelMapper {
     MarketScope scope = request.getScope();
 
     return new MarketDomain.StatisticsCommand(
-        scope.getDatasetVersionId(),
         filters(scope.getFilters()),
         request.getMetrics().stream().map(this::metric).toList(),
         request.getGroupBy() == null
@@ -103,10 +99,7 @@ public final class ApiModelMapper {
                     selection.getSort().getFirst().getDirection().name()));
 
     MarketDomain.Selection domainSelection =
-        new MarketDomain.Selection(
-            selection.getScope().getDatasetVersionId(),
-            filters(selection.getScope().getFilters()),
-            sort);
+        new MarketDomain.Selection(filters(selection.getScope().getFilters()), sort);
 
     ExportDomain.PdfOptions pdf = null;
     if (request.getPdfOptions() != null) {
@@ -148,8 +141,7 @@ public final class ApiModelMapper {
       metadata.setNextCursor(page.nextCursor());
     }
 
-    return new PropertyPage(
-        dataset(page.datasetVersion()), page.queryFingerprint(), items, metadata);
+    return new PropertyPage(page.dataRevision(), page.queryFingerprint(), items, metadata);
   }
 
   /** Maps aggregate groups and metrics to the generated statistics response. */
@@ -194,8 +186,7 @@ public final class ApiModelMapper {
                 })
             .toList();
 
-    return new StatisticsResponse(
-        dataset(result.datasetVersion()), result.queryFingerprint(), groups);
+    return new StatisticsResponse(result.dataRevision(), result.queryFingerprint(), groups);
   }
 
   /** Maps a domain prediction and its normalized inputs to the public response. */
@@ -233,9 +224,13 @@ public final class ApiModelMapper {
   public ExportJob toContract(ExportDomain.Job job) {
     ExportJob response =
         new ExportJob(
-            job.exportId(), ExportStatus.valueOf(job.status().name()),
-            ExportFormat.valueOf(job.format().name()), job.queryFingerprint(),
-            job.createdAt().atOffset(ZoneOffset.UTC), job.expiresAt().atOffset(ZoneOffset.UTC));
+            job.exportId(),
+            ExportStatus.valueOf(job.status().name()),
+            ExportFormat.valueOf(job.format().name()),
+            job.sourceRevision(),
+            job.queryFingerprint(),
+            job.createdAt().atOffset(ZoneOffset.UTC),
+            job.expiresAt().atOffset(ZoneOffset.UTC));
 
     if (job.startedAt() != null) {
       response.setStartedAt(job.startedAt().atOffset(ZoneOffset.UTC));
@@ -333,10 +328,6 @@ public final class ApiModelMapper {
         record.distanceToCityCenter().setScale(3).toPlainString(),
         record.schoolRating().setScale(3).toPlainString(),
         record.price().setScale(2).toPlainString());
-  }
-
-  private DatasetVersion dataset(MarketDomain.DatasetVersion version) {
-    return new DatasetVersion(version.id(), version.contentSha256());
   }
 
   private static BigDecimal decimal(String value) {
